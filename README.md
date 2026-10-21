@@ -8,6 +8,8 @@ y genera automáticamente un informe con los indicadores principales.
 1. **Limpieza**
    - Quita espacios innecesarios (al principio, al final y dobles espacios).
    - Elimina filas duplicadas.
+   - Elimina fechas vacías, con formato distinto de `AAAA-MM-DD`, imposibles
+     (`2026-13-45`, `2026-02-30`) o futuras.
    - Elimina cantidades vacías, no numéricas, decimales o ≤ 0.
    - Elimina precios vacíos, mal escritos (`abc`) o ≤ 0.
      Los formatos recuperables como `7,50` o `899.99 €` se corrigen en lugar de eliminarse.

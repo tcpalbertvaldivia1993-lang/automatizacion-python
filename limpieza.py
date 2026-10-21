@@ -3,8 +3,11 @@
 Este módulo lo usan tanto main.py (ejecución automática) como el notebook.
 """
 
+from datetime import date, datetime
+
 import pandas as pd
 
+FORMATO_FECHA = "%Y-%m-%d"
 COLUMNAS_OBLIGATORIAS = ["id_pedido", "fecha", "cliente", "producto", "cantidad", "precio_unitario"]
 
 
@@ -36,6 +39,23 @@ def convertir_precio(texto):
         return float(limpio)
     except ValueError:
         return None
+
+
+def convertir_fecha(texto):
+    """Convierte una fecha "AAAA-MM-DD" a fecha de Python.
+
+    Devuelve None si está vacía, mal escrita (por ejemplo "ayer"),
+    no existe en el calendario (por ejemplo "2026-13-45") o es futura.
+    """
+    if pd.isna(texto) or texto == "":
+        return None
+    try:
+        fecha = datetime.strptime(texto, FORMATO_FECHA).date()
+    except ValueError:
+        return None
+    if fecha > date.today():
+        return None
+    return fecha
 
 
 def convertir_cantidad(texto):
@@ -71,7 +91,14 @@ def limpiar_ventas(df):
     descartes.append(duplicadas)
     df = df[~es_duplicada].copy()
 
-    # 2. Cantidades vacías o inválidas.
+    # 2. Fechas vacías, mal escritas, imposibles o futuras.
+    fecha_mala = df["fecha"].apply(convertir_fecha).isna()
+    malas_fechas = df[fecha_mala].copy()
+    malas_fechas["motivo"] = "fecha vacía o inválida"
+    descartes.append(malas_fechas)
+    df = df[~fecha_mala].copy()
+
+    # 3. Cantidades vacías o inválidas.
     df["cantidad_num"] = df["cantidad"].apply(convertir_cantidad)
     cantidad_mala = df["cantidad_num"].isna() | (df["cantidad_num"] <= 0)
     malas = df[cantidad_mala].copy()
@@ -79,7 +106,7 @@ def limpiar_ventas(df):
     descartes.append(malas)
     df = df[~cantidad_mala].copy()
 
-    # 3. Precios mal escritos, vacíos o no positivos.
+    # 4. Precios mal escritos, vacíos o no positivos.
     df["precio_num"] = df["precio_unitario"].apply(convertir_precio)
     precio_malo = df["precio_num"].isna() | (df["precio_num"] <= 0)
     malos = df[precio_malo].copy()

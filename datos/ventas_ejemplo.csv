@@ -17,3 +17,7 @@ id_pedido,fecha,cliente,producto,cantidad,precio_unitario
 1013,2026-09-07,Marta Ríos,Cable HDMI,2,7.50
 1014,2026-09-08,Luis Pérez,Impresora,1,129.00
 1015,2026-09-08,Elena Sanz,Tinta,2.5,19.99
+1016,2026-13-45,Jorge Díaz,Ratón,1,12.99
+1017,ayer,Sara Vega,Teclado,1,25.50
+1018,,Pedro Gil,Monitor,1,189.00
+1019,2099-01-15,Lucía Mora,Webcam,1,39.90
