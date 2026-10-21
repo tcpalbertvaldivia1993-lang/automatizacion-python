@@ -4,7 +4,7 @@
 
 Herramienta en Python que recibe archivos de ventas (CSV o Excel), limpia los datos,
 detecta errores y genera automáticamente un informe con los indicadores principales.
-Puede procesar una carpeta entera y ejecutarse sola cada semana.
+Puede procesar una carpeta entera, ejecutarse sola cada semana y enviar los informes por email.
 
 ## Qué hace
 
@@ -42,6 +42,8 @@ limpieza.py                     funciones de limpieza e indicadores
 graficos.py                     gráficos del informe (matplotlib)
 plantillas/                     diseño HTML de los informes (Jinja2)
 formato.py                      números en formato español: 1.234,56
+enviar_email.py                 envío de los informes por email (SMTP)
+.env.ejemplo                    plantilla de la configuración del email
 preparar_online_retail.py       descarga y adapta un conjunto de datos real
 main.py                         ejecución automática (un archivo o una carpeta)
 ejecutar_programado.sh          lo que ejecuta la tarea programada: procesa datos/entrada/
@@ -63,6 +65,7 @@ venv/bin/python main.py ruta/a/mis_ventas.csv  # un CSV
 venv/bin/python main.py ruta/a/mis_ventas.xlsx # un Excel
 venv/bin/python main.py ruta/a/carpeta/        # todos los CSV y Excel de una carpeta
 venv/bin/python main.py ventas.csv --moneda £   # otra moneda en el informe
+venv/bin/python main.py --enviar-email          # enviar los informes por email
 
 venv/bin/jupyter notebook notebooks/          # abrir el notebook
 venv/bin/python -m pytest                     # ejecutar las pruebas
@@ -101,7 +104,8 @@ Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, el
 1. procesa todos los CSV y Excel de `datos/entrada/`,
 2. genera sus informes y `resultados/resumen.html`,
 3. mueve los que salieron bien a `datos/entrada/procesados/` (los que fallan se quedan,
-   para revisarlos con `resultados/registro.log`).
+   para revisarlos con `resultados/registro.log`),
+4. envía un email con los indicadores de cada archivo y sus informes HTML adjuntos.
 
 Si el PC estaba apagado el lunes a las 08:00, la tarea se ejecuta en cuanto se enciende.
 Se usa el Programador de tareas y no `cron` porque `cron` solo funciona con WSL abierto.
@@ -114,3 +118,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w programar_
 
 Para verla o cambiarla: menú Inicio → "Programador de tareas" →
 "automatizacion-python - informe semanal".
+
+## Envío por email
+
+1. Copia la plantilla de configuración: `cp .env.ejemplo .env`
+2. Rellena `.env` con el servidor, tu cuenta, la contraseña y el destinatario.
+   Con Gmail hace falta una **contraseña de aplicación**
+   ([cómo crearla](https://myaccount.google.com/apppasswords)), no tu contraseña normal.
+3. Pruébalo: `venv/bin/python main.py --enviar-email`
+
+El email lleva en el cuerpo los indicadores de cada archivo (y avisa si alguno falló), y
+los informes completos como adjuntos HTML. Los gráficos van en los adjuntos y no en el
+cuerpo, porque Gmail y otros programas de correo bloquean las imágenes incrustadas.
+
+`.env` contiene tu contraseña: está en `.gitignore` y **nunca** se sube a GitHub.

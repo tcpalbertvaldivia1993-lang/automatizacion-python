@@ -6,3 +6,4 @@ resultados/
 datos/reales/
 datos/entrada/*
 !datos/entrada/.gitkeep
+.env

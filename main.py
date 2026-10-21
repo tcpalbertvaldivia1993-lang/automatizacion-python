@@ -11,6 +11,8 @@ Opciones:
     --moneda SÍMBOLO      símbolo de la moneda en el informe (por defecto €)
     --mover-procesados    al terminar, mueve cada archivo procesado sin errores a
                           una subcarpeta "procesados/" junto a él (útil al programarlo)
+    --enviar-email        envía los informes por email (configuración en .env,
+                          ver .env.ejemplo)
 
 Resultados (carpeta resultados/):
     <nombre del archivo>/ventas_limpio.csv      -> datos ya limpios
@@ -32,6 +34,7 @@ from pathlib import Path
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+import enviar_email
 from formato import numero
 from graficos import grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
 from limpieza import calcular_indicadores, limpiar_ventas
@@ -198,6 +201,32 @@ def escribir_resumen(resultados, moneda):
     return ruta
 
 
+def enviar_por_email(resultados, moneda):
+    """Envía un email con los indicadores de cada archivo y sus informes HTML adjuntos."""
+    config = enviar_email.leer_configuracion()
+    correctos = [archivo for archivo, indicadores in resultados if indicadores is not None]
+    errores = len(resultados) - len(correctos)
+    fecha = f"{datetime.now():%d/%m/%Y}"
+
+    html = PLANTILLAS.get_template("email.html").render(
+        fecha_ejecucion=fecha,
+        moneda=moneda,
+        correctos=len(correctos),
+        errores=errores,
+        filas=[{"nombre": archivo.name, "indicadores": indicadores}
+               for archivo, indicadores in resultados],
+    )
+    asunto = f"Informe de ventas · {fecha}"
+    if errores:
+        asunto += f" · ⚠ {errores} con errores"
+    adjuntos = [(f"informe_{archivo.stem}.html", CARPETA_RESULTADOS / archivo.stem / "informe.html")
+                for archivo in correctos]
+
+    mensaje = enviar_email.construir_mensaje(config, asunto, html, adjuntos)
+    enviar_email.enviar(config, mensaje)
+    logging.info("Email enviado a %s con %d informes adjuntos", config["EMAIL_DESTINO"], len(adjuntos))
+
+
 def mover_a_procesados(archivo):
     """Mueve el archivo a una subcarpeta "procesados/" para no volver a procesarlo."""
     destino = archivo.parent / "procesados"
@@ -213,6 +242,8 @@ def leer_argumentos():
     parser.add_argument("--moneda", default="€", help="símbolo de la moneda (por defecto €)")
     parser.add_argument("--mover-procesados", action="store_true",
                         help="mover cada archivo procesado sin errores a procesados/")
+    parser.add_argument("--enviar-email", action="store_true",
+                        help="enviar los informes por email (configuración en .env)")
     return parser.parse_args()
 
 
@@ -238,10 +269,18 @@ def main():
         logging.info("Resumen generado en %s", escribir_resumen(resultados, argumentos.moneda))
 
     errores = sum(1 for _, indicadores in resultados if indicadores is None)
+    email_fallido = False
+    if argumentos.enviar_email:
+        try:
+            enviar_por_email(resultados, argumentos.moneda)
+        except Exception as error:  # configuración incompleta, sin internet, contraseña mal...
+            logging.error("No se pudo enviar el email: %s", error)
+            email_fallido = True
+
     logging.info("Fin de la ejecución: %d archivos correctos, %d con errores",
                  len(resultados) - errores, errores)
-    if errores:
-        sys.exit(1)  # así cron o GitHub Actions saben que algo falló
+    if errores or email_fallido:
+        sys.exit(1)  # así la tarea programada o GitHub Actions saben que algo falló
 
 
 if __name__ == "__main__":
