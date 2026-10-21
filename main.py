@@ -15,13 +15,14 @@ Opciones:
 Resultados (carpeta resultados/):
     <nombre del archivo>/ventas_limpio.csv      -> datos ya limpios
     <nombre del archivo>/filas_descartadas.csv  -> filas eliminadas y el motivo
-    <nombre del archivo>/informe.md             -> resumen con los indicadores y gráficos
+    <nombre del archivo>/informe.html           -> informe con indicadores y gráficos
     <nombre del archivo>/graficos/              -> imágenes PNG de los gráficos
-    resumen.md                                  -> comparación de archivos (solo con una carpeta)
+    resumen.html                                -> comparación de archivos (solo con una carpeta)
     registro.log                                -> registro de todas las ejecuciones
 """
 
 import argparse
+import base64
 import logging
 import shutil
 import sys
@@ -29,13 +30,23 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from formato import numero
 from graficos import grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
 from limpieza import calcular_indicadores, limpiar_ventas
 
 CARPETA_RESULTADOS = Path("resultados")
 ARCHIVO_POR_DEFECTO = Path("datos/ventas_ejemplo.csv")
 EXTENSIONES = {".csv", ".xlsx", ".xls"}
+
+# Plantillas HTML de los informes. autoescape evita que un texto de los datos
+# (por ejemplo un producto llamado "<b>Oferta</b>") se interprete como HTML.
+PLANTILLAS = Environment(
+    loader=FileSystemLoader(Path(__file__).resolve().parent / "plantillas"),
+    autoescape=select_autoescape(),
+)
+PLANTILLAS.filters["numero"] = numero  # en las plantillas: {{ valor | numero }}
 
 
 def configurar_registro():
@@ -67,7 +78,7 @@ def buscar_archivos(ruta):
     return [ruta]
 
 
-def crear_graficos(limpio, carpeta_salida, moneda):
+def crear_graficos(limpio, carpeta_salida):
     """Genera los gráficos en <carpeta_salida>/graficos/.
 
     Devuelve una lista con (título, imagen, datos) de cada gráfico.
@@ -79,54 +90,49 @@ def crear_graficos(limpio, carpeta_salida, moneda):
         ("ventas_por_producto.png", grafico_ventas_por_producto),
         ("ventas_en_el_tiempo.png", grafico_ventas_en_el_tiempo),
     ]:
-        titulo, datos = funcion(limpio, carpeta / nombre, moneda)
+        titulo, datos = funcion(limpio, carpeta / nombre)
         graficos.append((titulo, f"graficos/{nombre}", datos))
     return graficos
 
 
-def tabla_markdown(datos, moneda):
-    """Convierte una serie de pandas en una tabla Markdown de dos columnas."""
-    lineas = [f"| {datos.index.name} | Ventas ({moneda}) |", "|---|---:|"]
-    lineas += [f"| {indice} | {valor:,.2f} |" for indice, valor in datos.items()]
-    return lineas
+def imagen_incrustada(ruta):
+    """Convierte un PNG en texto (base64) para meterlo dentro del HTML.
+
+    Así el informe es un solo archivo: se puede enviar por email y se ve completo.
+    """
+    contenido = base64.b64encode(ruta.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{contenido}"
 
 
 def escribir_informe(carpeta_salida, archivo, filas_originales, limpio, descartadas,
                      indicadores, graficos, moneda):
-    """Crea el informe en formato Markdown."""
-    resumen_motivos = descartadas["motivo"].value_counts()
-    lineas = [
-        "# Informe de ventas",
-        "",
-        f"- Archivo analizado: `{archivo}`",
-        f"- Fecha de ejecución: {datetime.now():%Y-%m-%d %H:%M}",
-        "",
-        "## Indicadores",
-        "",
-        f"- **Ventas totales (netas):** {indicadores['ventas_totales']:,.2f} {moneda}",
-        f"- **Devoluciones y cancelaciones (ya restadas):** {indicadores['devoluciones']:,.2f} {moneda}",
-        f"- **Pedidos:** {indicadores['pedidos']:,}",
-        f"- **Valor medio por pedido:** {indicadores['valor_medio_pedido']:,.2f} {moneda}",
-        "",
-    ]
-    for titulo, imagen, datos in graficos:
-        lineas += [f"## {titulo}", "", f"![{titulo}]({imagen})", ""]
-        lineas += tabla_markdown(datos, moneda) + [""]
-    lineas += [
-        "## Calidad de los datos",
-        "",
-        f"- Filas originales: {filas_originales:,}",
-        f"- Filas válidas: {len(limpio):,}",
-        f"- Filas descartadas: {len(descartadas):,}",
-        "",
-    ]
-    if not resumen_motivos.empty:
-        lineas += ["| Motivo | Filas |", "|---|---|"]
-        lineas += [f"| {motivo} | {n:,} |" for motivo, n in resumen_motivos.items()]
-        lineas.append("")
-
-    ruta = carpeta_salida / "informe.md"
-    ruta.write_text("\n".join(lineas), encoding="utf-8")
+    """Crea el informe en HTML a partir de la plantilla plantillas/informe.html."""
+    motivos = descartadas["motivo"].value_counts()
+    html = PLANTILLAS.get_template("informe.html").render(
+        archivo=archivo,
+        nombre_archivo=archivo.name,
+        fecha_ejecucion=f"{datetime.now():%d/%m/%Y %H:%M}",
+        moneda=moneda,
+        indicadores=indicadores,
+        graficos=[
+            {
+                "titulo": titulo,
+                "imagen": imagen_incrustada(carpeta_salida / imagen),
+                "cabecera": datos.index.name,
+                "filas": list(datos.items()),
+            }
+            for titulo, imagen, datos in graficos
+        ],
+        calidad={
+            "originales": filas_originales,
+            "validas": len(limpio),
+            "descartadas": len(descartadas),
+            "porcentaje_descartadas": 100 * len(descartadas) / filas_originales,
+            "motivos": list(motivos.items()),
+        },
+    )
+    ruta = carpeta_salida / "informe.html"
+    ruta.write_text(html, encoding="utf-8")
     return ruta
 
 
@@ -166,7 +172,7 @@ def procesar_archivo(archivo, moneda):
     carpeta_salida.mkdir(exist_ok=True)
     limpio.to_csv(carpeta_salida / "ventas_limpio.csv", index=False)
     descartadas.to_csv(carpeta_salida / "filas_descartadas.csv", index=False)
-    graficos = crear_graficos(limpio, carpeta_salida, moneda)
+    graficos = crear_graficos(limpio, carpeta_salida)
     ruta_informe = escribir_informe(carpeta_salida, archivo, len(df), limpio, descartadas,
                                     indicadores, graficos, moneda)
     logging.info("Informe generado en %s", ruta_informe)
@@ -174,27 +180,21 @@ def procesar_archivo(archivo, moneda):
 
 
 def escribir_resumen(resultados, moneda):
-    """Crea resultados/resumen.md con una fila por archivo, para compararlos."""
-    lineas = [
-        "# Resumen de archivos procesados",
-        "",
-        f"Fecha de ejecución: {datetime.now():%Y-%m-%d %H:%M}",
-        "",
-        f"| Archivo | Ventas netas ({moneda}) | Devoluciones ({moneda}) | Pedidos "
-        f"| Valor medio ({moneda}) | Informe |",
-        "|---|---:|---:|---:|---:|---|",
-    ]
-    for archivo, ind in resultados:
-        if ind is None:
-            lineas.append(f"| {archivo.name} | ❌ error, ver registro.log | | | | |")
-        else:
-            lineas.append(
-                f"| {archivo.name} | {ind['ventas_totales']:,.2f} | {ind['devoluciones']:,.2f} "
-                f"| {ind['pedidos']:,} | {ind['valor_medio_pedido']:,.2f} "
-                f"| [informe]({archivo.stem}/informe.md) |"
-            )
-    ruta = CARPETA_RESULTADOS / "resumen.md"
-    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    """Crea resultados/resumen.html con una fila por archivo, para compararlos."""
+    errores = sum(1 for _, indicadores in resultados if indicadores is None)
+    html = PLANTILLAS.get_template("resumen.html").render(
+        fecha_ejecucion=f"{datetime.now():%d/%m/%Y %H:%M}",
+        moneda=moneda,
+        correctos=len(resultados) - errores,
+        errores=errores,
+        filas=[
+            {"nombre": archivo.name, "indicadores": indicadores,
+             "enlace": f"{archivo.stem}/informe.html"}
+            for archivo, indicadores in resultados
+        ],
+    )
+    ruta = CARPETA_RESULTADOS / "resumen.html"
+    ruta.write_text(html, encoding="utf-8")
     return ruta
 
 

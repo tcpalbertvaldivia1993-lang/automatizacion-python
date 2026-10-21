@@ -29,7 +29,31 @@ def test_resultados_en_una_carpeta_por_archivo(resultados_temporales):
     carpeta = resultados_temporales / "ventas_ejemplo"
     assert (carpeta / "ventas_limpio.csv").exists()
     assert (carpeta / "graficos" / "ventas_por_producto.png").exists()
-    assert "£" in (carpeta / "informe.md").read_text(encoding="utf-8")
+    html = (carpeta / "informe.html").read_text(encoding="utf-8")
+    assert "1.375,99 £" in html                      # formato español y moneda elegida
+    assert html.count("data:image/png;base64,") == 2  # los dos gráficos van dentro del HTML
+
+
+def test_el_html_no_ejecuta_texto_de_los_datos(tmp_path, resultados_temporales):
+    archivo = tmp_path / "raro.csv"
+    archivo.write_text(
+        "id_pedido,fecha,cliente,producto,cantidad,precio_unitario\n"
+        "1,2026-09-01,Ana,<script>alert(1)</script>,1,10\n",
+        encoding="utf-8",
+    )
+    main.procesar_archivo(archivo, "€")
+    html = (resultados_temporales / "raro" / "informe.html").read_text(encoding="utf-8")
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_resumen_html(tmp_path, resultados_temporales):
+    roto = tmp_path / "roto.csv"
+    roto.write_text("pedido,total\n1,10\n", encoding="utf-8")
+    resultados = [(CSV_EJEMPLO, main.procesar_archivo(CSV_EJEMPLO, "€")), (roto, None)]
+    html = main.escribir_resumen(resultados, "€").read_text(encoding="utf-8")
+    assert 'href="ventas_ejemplo/informe.html"' in html
+    assert "No se pudo procesar" in html
 
 
 def test_archivo_sin_columnas_correctas_devuelve_none(tmp_path):

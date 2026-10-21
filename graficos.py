@@ -1,8 +1,8 @@
 """Gráficos del informe: ventas por producto y ventas a lo largo del tiempo.
 
-Cada función guarda una imagen PNG y devuelve (título, datos), para poder
-mostrar también la tabla en el informe. El nombre del índice de los datos
-("Producto", "Día" o "Mes") sirve de cabecera de la tabla.
+Cada función guarda una imagen PNG (sin título: lo pone el informe) y devuelve
+(título, datos), para poder mostrar también la tabla en el informe. El nombre del
+índice de los datos ("Producto", "Día" o "Mes") sirve de cabecera de la tabla.
 """
 
 import matplotlib
@@ -10,13 +10,14 @@ import matplotlib
 matplotlib.use("Agg")  # dibuja en archivos, sin abrir ventanas
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import FuncFormatter, MaxNLocator
+
+from formato import numero
 
 # Colores del gráfico: un solo color para los datos y grises suaves para lo demás.
 COLOR_BARRAS = "#2a78d6"
 COLOR_BARRAS_INCOMPLETAS = "#86b6ef"  # mismo azul, más claro: meses con datos incompletos
 COLOR_FONDO = "#fcfcfb"
-COLOR_TEXTO = "#0b0b0b"
 COLOR_TEXTO_SUAVE = "#52514e"
 COLOR_REJILLA = "#e4e3df"
 
@@ -24,13 +25,15 @@ COLOR_REJILLA = "#e4e3df"
 MAX_PRODUCTOS = 10      # el gráfico de productos muestra solo los que más venden
 MAX_DIAS_POR_DIA = 62   # con más días que esto, las ventas se agrupan por mes
 
+# Números de los ejes en formato español y sin decimales: 1.400.000
+FORMATO_EJE = FuncFormatter(lambda valor, _: numero(valor, 0))
 
-def _preparar_ejes(titulo, ancho=8, alto=4.5):
+
+def _preparar_ejes(ancho=8, alto=4.5):
     """Crea una figura con el estilo común a todos los gráficos."""
     figura, ejes = plt.subplots(figsize=(ancho, alto), dpi=120)
     figura.patch.set_facecolor(COLOR_FONDO)
     ejes.set_facecolor(COLOR_FONDO)
-    ejes.set_title(titulo, loc="left", fontsize=13, color=COLOR_TEXTO, pad=12)
     for lado in ["top", "right", "left"]:
         ejes.spines[lado].set_visible(False)
     ejes.spines["bottom"].set_color(COLOR_REJILLA)
@@ -45,7 +48,7 @@ def _guardar(figura, ruta):
     plt.close(figura)
 
 
-def grafico_ventas_por_producto(limpio, ruta, moneda="€"):
+def grafico_ventas_por_producto(limpio, ruta):
     """Barras horizontales con el importe vendido de cada producto, de mayor a menor.
 
     Si hay más de MAX_PRODUCTOS productos, solo se muestran los que más venden.
@@ -58,21 +61,21 @@ def grafico_ventas_por_producto(limpio, ruta, moneda="€"):
     else:
         titulo = "Ventas por producto"
 
-    figura, ejes = _preparar_ejes(f"{titulo} ({moneda})", alto=0.45 * len(datos) + 1.2)
+    figura, ejes = _preparar_ejes(alto=0.45 * len(datos) + 0.8)
     ejes.barh(datos.index, datos.values, color=COLOR_BARRAS, height=0.7)
     ejes.grid(axis="x", color=COLOR_REJILLA, linewidth=0.8)
     ejes.spines["bottom"].set_visible(False)
     # Etiqueta con el valor al final de cada barra.
     for posicion, valor in enumerate(datos.values):
-        ejes.text(valor, posicion, f"  {valor:,.2f}", va="center", fontsize=9, color=COLOR_TEXTO_SUAVE)
+        ejes.text(valor, posicion, f"  {numero(valor)}", va="center", fontsize=9, color=COLOR_TEXTO_SUAVE)
     ejes.set_xlim(0, datos.max() * 1.25)  # espacio para la etiqueta de la barra más larga
     ejes.xaxis.set_major_locator(MaxNLocator(5))  # pocas marcas, para que no se pisen
-    ejes.xaxis.set_major_formatter("{x:,.0f}")
+    ejes.xaxis.set_major_formatter(FORMATO_EJE)
     _guardar(figura, ruta)
     return titulo, datos.sort_values(ascending=False)
 
 
-def grafico_ventas_en_el_tiempo(limpio, ruta, moneda="€"):
+def grafico_ventas_en_el_tiempo(limpio, ruta):
     """Columnas con el importe vendido cada día, o cada mes si hay muchos días.
 
     Los días (o meses) sin ventas aparecen con 0, para que no parezca que son seguidos.
@@ -100,7 +103,7 @@ def grafico_ventas_en_el_tiempo(limpio, ruta, moneda="€"):
     datos = agrupado.reindex(todos, fill_value=0)
     es_incompleto = [momento in incompletos for momento in datos.index]
 
-    figura, ejes = _preparar_ejes(f"{titulo} ({moneda})")
+    figura, ejes = _preparar_ejes()
     etiquetas = [
         momento.strftime(formato_etiqueta) + ("*" if incompleto else "")
         for momento, incompleto in zip(datos.index, es_incompleto)
@@ -108,7 +111,7 @@ def grafico_ventas_en_el_tiempo(limpio, ruta, moneda="€"):
     colores = [COLOR_BARRAS_INCOMPLETAS if incompleto else COLOR_BARRAS for incompleto in es_incompleto]
     ejes.bar(etiquetas, datos.values, color=colores, width=0.7)
     ejes.grid(axis="y", color=COLOR_REJILLA, linewidth=0.8)
-    ejes.yaxis.set_major_formatter("{x:,.0f}")
+    ejes.yaxis.set_major_formatter(FORMATO_EJE)
     if len(datos) > 12:
         figura.autofmt_xdate()
     if incompletos:

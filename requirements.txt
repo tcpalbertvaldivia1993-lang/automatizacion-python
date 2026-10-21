@@ -4,3 +4,4 @@ openpyxl
 pytest
 notebook
 ipykernel
+jinja2

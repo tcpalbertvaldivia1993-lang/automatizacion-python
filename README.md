@@ -27,9 +27,11 @@ Puede procesar una carpeta entera y ejecutarse sola cada semana.
 3. **Resultados** (carpeta `resultados/`, con una subcarpeta por archivo):
    - `<archivo>/ventas_limpio.csv`: datos limpios, con la columna `importe`.
    - `<archivo>/filas_descartadas.csv`: cada fila eliminada con su motivo.
-   - `<archivo>/informe.md`: resumen con indicadores, gráficos y calidad de los datos.
+   - `<archivo>/informe.html`: informe con indicadores, gráficos y calidad de los datos.
+     Es un solo archivo (los gráficos van dentro): se abre con doble clic en cualquier
+     navegador, se puede enviar por email y se adapta al móvil. Números en formato español.
    - `<archivo>/graficos/`: los gráficos en PNG.
-   - `resumen.md`: al procesar una carpeta, una tabla que compara todos los archivos.
+   - `resumen.html`: al procesar una carpeta, una tabla que compara todos los archivos.
    - `registro.log`: registro de todas las ejecuciones.
 
 ## Estructura
@@ -38,6 +40,8 @@ Puede procesar una carpeta entera y ejecutarse sola cada semana.
 datos/ventas_ejemplo.csv        CSV de ejemplo con errores a propósito
 limpieza.py                     funciones de limpieza e indicadores
 graficos.py                     gráficos del informe (matplotlib)
+plantillas/                     diseño HTML de los informes (Jinja2)
+formato.py                      números en formato español: 1.234,56
 preparar_online_retail.py       descarga y adapta un conjunto de datos real
 main.py                         ejecución automática (un archivo o una carpeta)
 ejecutar_programado.sh          lo que ejecuta la tarea programada: procesa datos/entrada/
@@ -95,7 +99,7 @@ Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, el
 **Programador de tareas de Windows** abre WSL y ejecuta `ejecutar_programado.sh`, que:
 
 1. procesa todos los CSV y Excel de `datos/entrada/`,
-2. genera sus informes y `resultados/resumen.md`,
+2. genera sus informes y `resultados/resumen.html`,
 3. mueve los que salieron bien a `datos/entrada/procesados/` (los que fallan se quedan,
    para revisarlos con `resultados/registro.log`).
 
