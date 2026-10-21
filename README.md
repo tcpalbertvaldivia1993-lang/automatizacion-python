@@ -1,5 +1,7 @@
 # Automatización de limpieza de datos de ventas
 
+[![Pruebas](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/pruebas.yml/badge.svg)](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/pruebas.yml)
+
 Herramienta en Python que recibe un CSV de ventas, limpia los datos, detecta errores
 y genera automáticamente un informe con los indicadores principales.
 
@@ -32,6 +34,7 @@ graficos.py                     gráficos del informe (matplotlib)
 main.py                         ejecución automática
 notebooks/analisis_ventas.ipynb el mismo proceso paso a paso
 tests/                          pruebas con pytest
+.github/workflows/pruebas.yml   ejecuta las pruebas en GitHub con cada push
 ```
 
 ## Cómo usarlo
