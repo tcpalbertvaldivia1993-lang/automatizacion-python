@@ -32,6 +32,8 @@ def test_convertir_cantidad():
 
 def test_convertir_fecha():
     assert convertir_fecha("2026-09-01") == date(2026, 9, 1)
+    assert convertir_fecha("2026-09-01 08:26:00") == date(2026, 9, 1)  # con hora
+    assert convertir_fecha("2026-09-01 08:26") == date(2026, 9, 1)
     assert convertir_fecha("2026-13-45") is None   # mes y día imposibles
     assert convertir_fecha("2026-02-30") is None   # febrero no tiene 30 días
     assert convertir_fecha("01/09/2026") is None   # formato distinto
@@ -49,6 +51,12 @@ def test_fechas_invalidas_se_descartan():
     limpio, descartadas = limpiar_ventas(df)
     assert list(limpio["id_pedido"]) == ["3"]
     assert list(descartadas["motivo"]) == ["fecha vacía o inválida"] * 2
+
+
+def test_la_hora_se_quita_de_la_fecha():
+    df = crear_df([["1", "2026-09-01 08:26:00", "Ana", "Teclado", "1", "10"]])
+    limpio, _ = limpiar_ventas(df)
+    assert limpio.loc[0, "fecha"] == "2026-09-01"
 
 
 def test_duplicados_con_espacios_se_eliminan():

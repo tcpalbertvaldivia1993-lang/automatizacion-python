@@ -1,7 +1,8 @@
-"""Gráficos del informe: ventas por producto y ventas por día.
+"""Gráficos del informe: ventas por producto y ventas a lo largo del tiempo.
 
-Cada función guarda una imagen PNG y devuelve la tabla de datos usada,
-para poder mostrarla también en el informe.
+Cada función guarda una imagen PNG y devuelve (título, datos), para poder
+mostrar también la tabla en el informe. El nombre del índice de los datos
+("Producto", "Día" o "Mes") sirve de cabecera de la tabla.
 """
 
 import matplotlib
@@ -16,6 +17,10 @@ COLOR_FONDO = "#fcfcfb"
 COLOR_TEXTO = "#0b0b0b"
 COLOR_TEXTO_SUAVE = "#52514e"
 COLOR_REJILLA = "#e4e3df"
+
+# Con datos reales puede haber miles de productos y años de fechas:
+MAX_PRODUCTOS = 10      # el gráfico de productos muestra solo los que más venden
+MAX_DIAS_POR_DIA = 62   # con más días que esto, las ventas se agrupan por mes
 
 
 def _preparar_ejes(titulo, ancho=8, alto=4.5):
@@ -39,36 +44,59 @@ def _guardar(figura, ruta):
 
 
 def grafico_ventas_por_producto(limpio, ruta):
-    """Barras horizontales con el importe vendido de cada producto, de mayor a menor."""
-    datos = limpio.groupby("producto")["importe"].sum().sort_values()
+    """Barras horizontales con el importe vendido de cada producto, de mayor a menor.
 
-    figura, ejes = _preparar_ejes("Ventas por producto (€)", alto=0.45 * len(datos) + 1.2)
+    Si hay más de MAX_PRODUCTOS productos, solo se muestran los que más venden.
+    """
+    total_productos = limpio["producto"].nunique()
+    datos = limpio.groupby("producto")["importe"].sum().nlargest(MAX_PRODUCTOS).sort_values()
+    datos.index.name = "Producto"
+    if total_productos > MAX_PRODUCTOS:
+        titulo = f"Los {MAX_PRODUCTOS} productos más vendidos (de {total_productos})"
+    else:
+        titulo = "Ventas por producto"
+
+    figura, ejes = _preparar_ejes(f"{titulo} (€)", alto=0.45 * len(datos) + 1.2)
     ejes.barh(datos.index, datos.values, color=COLOR_BARRAS, height=0.7)
     ejes.grid(axis="x", color=COLOR_REJILLA, linewidth=0.8)
     ejes.spines["bottom"].set_visible(False)
     # Etiqueta con el valor al final de cada barra.
     for posicion, valor in enumerate(datos.values):
-        ejes.text(valor, posicion, f"  {valor:.2f}", va="center", fontsize=9, color=COLOR_TEXTO_SUAVE)
-    ejes.set_xlim(0, datos.max() * 1.15)
+        ejes.text(valor, posicion, f"  {valor:,.2f}", va="center", fontsize=9, color=COLOR_TEXTO_SUAVE)
+    ejes.set_xlim(0, datos.max() * 1.18)
+    ejes.xaxis.set_major_formatter("{x:,.0f}")
     _guardar(figura, ruta)
-    return datos.sort_values(ascending=False)
+    return titulo, datos.sort_values(ascending=False)
 
 
-def grafico_ventas_por_dia(limpio, ruta):
-    """Columnas con el importe vendido cada día.
+def grafico_ventas_en_el_tiempo(limpio, ruta):
+    """Columnas con el importe vendido cada día, o cada mes si hay muchos días.
 
-    Los días sin ventas aparecen con 0, para que no parezca que las fechas son seguidas.
+    Los días (o meses) sin ventas aparecen con 0, para que no parezca que son seguidos.
     """
-    por_dia = limpio.groupby(pd.to_datetime(limpio["fecha"]))["importe"].sum()
-    todos_los_dias = pd.date_range(por_dia.index.min(), por_dia.index.max(), freq="D")
-    datos = por_dia.reindex(todos_los_dias, fill_value=0)
+    fechas = pd.to_datetime(limpio["fecha"])
+    dias = (fechas.max() - fechas.min()).days + 1
+    if dias > MAX_DIAS_POR_DIA:
+        titulo, cabecera, frecuencia = "Ventas por mes", "Mes", "MS"
+        formato_etiqueta, formato_tabla = "%m/%Y", "%Y-%m"
+        periodo = fechas.dt.to_period("M").dt.to_timestamp()
+    else:
+        titulo, cabecera, frecuencia = "Ventas por día", "Día", "D"
+        formato_etiqueta, formato_tabla = "%d/%m", "%Y-%m-%d"
+        periodo = fechas
 
-    figura, ejes = _preparar_ejes("Ventas por día (€)")
-    etiquetas = datos.index.strftime("%d/%m")
-    ejes.bar(etiquetas, datos.values, color=COLOR_BARRAS, width=0.7)
+    agrupado = limpio["importe"].groupby(periodo).sum()
+    todos = pd.date_range(agrupado.index.min(), agrupado.index.max(), freq=frecuencia)
+    datos = agrupado.reindex(todos, fill_value=0)
+
+    figura, ejes = _preparar_ejes(f"{titulo} (€)")
+    ejes.bar(datos.index.strftime(formato_etiqueta), datos.values, color=COLOR_BARRAS, width=0.7)
     ejes.grid(axis="y", color=COLOR_REJILLA, linewidth=0.8)
-    if len(datos) > 15:
+    ejes.yaxis.set_major_formatter("{x:,.0f}")
+    if len(datos) > 12:
         figura.autofmt_xdate()
     _guardar(figura, ruta)
-    datos.index = datos.index.strftime("%Y-%m-%d")
-    return datos
+
+    datos.index = datos.index.strftime(formato_tabla)
+    datos.index.name = cabecera
+    return titulo, datos

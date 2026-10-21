@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from graficos import grafico_ventas_por_dia, grafico_ventas_por_producto
+from graficos import grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
 from limpieza import calcular_indicadores, limpiar_ventas
 
 CARPETA_RESULTADOS = Path("resultados")
@@ -37,29 +37,31 @@ def configurar_registro():
             logging.StreamHandler(),
         ],
     )
+    # matplotlib escribe avisos internos que no interesan en nuestro registro.
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
 def crear_graficos(limpio):
     """Genera los gráficos en resultados/graficos/.
 
-    Devuelve una lista con (título, imagen, nombre de columna, datos) de cada gráfico.
+    Devuelve una lista con (título, imagen, datos) de cada gráfico.
     """
     carpeta = CARPETA_RESULTADOS / "graficos"
     carpeta.mkdir(exist_ok=True)
     graficos = []
-    for titulo, nombre, columna, funcion in [
-        ("Ventas por producto", "ventas_por_producto.png", "Producto", grafico_ventas_por_producto),
-        ("Ventas por día", "ventas_por_dia.png", "Fecha", grafico_ventas_por_dia),
+    for nombre, funcion in [
+        ("ventas_por_producto.png", grafico_ventas_por_producto),
+        ("ventas_en_el_tiempo.png", grafico_ventas_en_el_tiempo),
     ]:
-        datos = funcion(limpio, carpeta / nombre)
-        graficos.append((titulo, f"graficos/{nombre}", columna, datos))
+        titulo, datos = funcion(limpio, carpeta / nombre)
+        graficos.append((titulo, f"graficos/{nombre}", datos))
     return graficos
 
 
-def tabla_markdown(datos, columna):
+def tabla_markdown(datos):
     """Convierte una serie de pandas en una tabla Markdown de dos columnas."""
-    lineas = [f"| {columna} | Ventas (€) |", "|---|---:|"]
-    lineas += [f"| {indice} | {valor:.2f} |" for indice, valor in datos.items()]
+    lineas = [f"| {datos.index.name} | Ventas (€) |", "|---|---:|"]
+    lineas += [f"| {indice} | {valor:,.2f} |" for indice, valor in datos.items()]
     return lineas
 
 
@@ -74,25 +76,25 @@ def escribir_informe(archivo, filas_originales, limpio, descartadas, indicadores
         "",
         "## Indicadores",
         "",
-        f"- **Ventas totales:** {indicadores['ventas_totales']:.2f} €",
-        f"- **Pedidos:** {indicadores['pedidos']}",
-        f"- **Valor medio por pedido:** {indicadores['valor_medio_pedido']:.2f} €",
+        f"- **Ventas totales:** {indicadores['ventas_totales']:,.2f} €",
+        f"- **Pedidos:** {indicadores['pedidos']:,}",
+        f"- **Valor medio por pedido:** {indicadores['valor_medio_pedido']:,.2f} €",
         "",
     ]
-    for titulo, imagen, columna, datos in graficos:
+    for titulo, imagen, datos in graficos:
         lineas += [f"## {titulo}", "", f"![{titulo}]({imagen})", ""]
-        lineas += tabla_markdown(datos, columna) + [""]
+        lineas += tabla_markdown(datos) + [""]
     lineas += [
         "## Calidad de los datos",
         "",
-        f"- Filas originales: {filas_originales}",
-        f"- Filas válidas: {len(limpio)}",
-        f"- Filas descartadas: {len(descartadas)}",
+        f"- Filas originales: {filas_originales:,}",
+        f"- Filas válidas: {len(limpio):,}",
+        f"- Filas descartadas: {len(descartadas):,}",
         "",
     ]
     if not resumen_motivos.empty:
         lineas += ["| Motivo | Filas |", "|---|---|"]
-        lineas += [f"| {motivo} | {n} |" for motivo, n in resumen_motivos.items()]
+        lineas += [f"| {motivo} | {n:,} |" for motivo, n in resumen_motivos.items()]
         lineas.append("")
 
     ruta = CARPETA_RESULTADOS / "informe.md"

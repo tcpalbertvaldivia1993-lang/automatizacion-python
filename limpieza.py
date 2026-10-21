@@ -7,7 +7,8 @@ from datetime import date, datetime
 
 import pandas as pd
 
-FORMATO_FECHA = "%Y-%m-%d"
+# Formatos de fecha aceptados: solo fecha, o fecha con hora (habitual en datos reales).
+FORMATOS_FECHA = ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"]
 COLUMNAS_OBLIGATORIAS = ["id_pedido", "fecha", "cliente", "producto", "cantidad", "precio_unitario"]
 
 
@@ -42,17 +43,22 @@ def convertir_precio(texto):
 
 
 def convertir_fecha(texto):
-    """Convierte una fecha "AAAA-MM-DD" a fecha de Python.
+    """Convierte una fecha "AAAA-MM-DD" (con o sin hora) a fecha de Python.
 
+    La hora, si la hay, se descarta: solo nos interesa el día.
     Devuelve None si está vacía, mal escrita (por ejemplo "ayer"),
     no existe en el calendario (por ejemplo "2026-13-45") o es futura.
     """
     if pd.isna(texto) or texto == "":
         return None
-    try:
-        fecha = datetime.strptime(texto, FORMATO_FECHA).date()
-    except ValueError:
-        return None
+    for formato in FORMATOS_FECHA:
+        try:
+            fecha = datetime.strptime(texto, formato).date()
+            break
+        except ValueError:
+            continue
+    else:
+        return None  # no encajó con ningún formato
     if fecha > date.today():
         return None
     return fecha
@@ -92,11 +98,14 @@ def limpiar_ventas(df):
     df = df[~es_duplicada].copy()
 
     # 2. Fechas vacías, mal escritas, imposibles o futuras.
-    fecha_mala = df["fecha"].apply(convertir_fecha).isna()
+    fechas = df["fecha"].apply(convertir_fecha)
+    fecha_mala = fechas.isna()
     malas_fechas = df[fecha_mala].copy()
     malas_fechas["motivo"] = "fecha vacía o inválida"
     descartes.append(malas_fechas)
     df = df[~fecha_mala].copy()
+    # Todas las fechas válidas quedan como "AAAA-MM-DD", sin hora.
+    df["fecha"] = fechas[~fecha_mala].astype(str)
 
     # 3. Cantidades vacías o inválidas.
     df["cantidad_num"] = df["cantidad"].apply(convertir_cantidad)
