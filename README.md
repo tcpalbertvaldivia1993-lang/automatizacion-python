@@ -12,13 +12,17 @@ y genera automáticamente un informe con los indicadores principales.
    - Elimina filas duplicadas.
    - Elimina fechas vacías, con formato distinto de `AAAA-MM-DD`, imposibles
      (`2026-13-45`, `2026-02-30`) o futuras.
-   - Elimina cantidades vacías, no numéricas, decimales o ≤ 0.
+   - Elimina cantidades vacías, no numéricas, decimales o 0.
+     Una cantidad **negativa** es una devolución o cancelación: no se elimina,
+     se resta de las ventas y no cuenta como pedido.
    - Elimina precios vacíos, mal escritos (`abc`) o ≤ 0.
      Los formatos recuperables como `7,50` o `899.99 €` se corrigen en lugar de eliminarse.
-2. **Indicadores**: ventas totales, número de pedidos y valor medio por pedido.
+2. **Indicadores**: ventas totales netas, devoluciones y cancelaciones,
+   número de pedidos y valor medio por pedido.
    Además, gráficos de **ventas por producto** (los 10 que más venden si hay
    muchos) y **ventas por día** (por mes si los datos abarcan más de dos meses).
-   Los periodos sin ventas aparecen con 0. Cada gráfico lleva su tabla de datos.
+   Los periodos sin ventas aparecen con 0, y el primer o último mes con datos
+   incompletos se marca con `*` y un color más claro. Cada gráfico lleva su tabla de datos.
 3. **Resultados** (carpeta `resultados/`):
    - `ventas_limpio.csv`: datos limpios, con la columna `importe`.
    - `filas_descartadas.csv`: cada fila eliminada con su motivo.
@@ -60,8 +64,15 @@ Las fechas pueden ir con o sin hora (`2026-09-01` o `2026-09-01 08:26:00`).
 
 `preparar_online_retail.py` descarga el conjunto de datos público
 [Online Retail (UCI)](https://archive.ics.uci.edu/dataset/352/online+retail):
-541.909 ventas reales de una tienda online británica (2010-2011). Después
-cambia los nombres de sus columnas a los que espera la herramienta.
+541.909 ventas reales de una tienda online británica (2010-2011). Después:
+
+- Aparta las 2.912 filas que no son productos (envíos, comisiones y ajustes,
+  identificados por su código) en `datos/reales/online_retail_excluidas.csv`.
+- Cambia los nombres de las columnas a los que espera la herramienta.
+
+Las cancelaciones de este conjunto (pedidos que empiezan por `C`) tienen cantidad
+negativa, así que la herramienta las resta de las ventas automáticamente.
+Los importes están en libras (£), aunque el informe muestra el símbolo €.
 
 ```bash
 venv/bin/python preparar_online_retail.py              # ~2 min, solo la primera vez

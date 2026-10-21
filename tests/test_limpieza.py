@@ -25,6 +25,7 @@ def test_convertir_precio():
 
 def test_convertir_cantidad():
     assert convertir_cantidad("3") == 3
+    assert convertir_cantidad("-2") == -2   # devolución
     assert convertir_cantidad("2.5") is None
     assert convertir_cantidad("dos") is None
     assert convertir_cantidad("") is None
@@ -73,7 +74,7 @@ def test_duplicados_con_espacios_se_eliminan():
 def test_cantidades_y_precios_invalidos_se_descartan():
     df = crear_df([
         ["1", "2026-09-01", "Ana", "Teclado", "", "10"],
-        ["2", "2026-09-01", "Ana", "Teclado", "-1", "10"],
+        ["2", "2026-09-01", "Ana", "Teclado", "0", "10"],
         ["3", "2026-09-01", "Ana", "Teclado", "1", "abc"],
         ["4", "2026-09-01", "Ana", "Teclado", "1", "-5"],
         ["5", "2026-09-01", "Ana", "Teclado", "2", "10"],
@@ -91,4 +92,25 @@ def test_indicadores():
     ])
     limpio, _ = limpiar_ventas(df)
     indicadores = calcular_indicadores(limpio)
-    assert indicadores == {"ventas_totales": 125.0, "pedidos": 2, "valor_medio_pedido": 62.5}
+    assert indicadores == {
+        "ventas_totales": 125.0,
+        "devoluciones": 0.0,
+        "pedidos": 2,
+        "valor_medio_pedido": 62.5,
+    }
+
+
+def test_las_devoluciones_se_restan_y_no_cuentan_como_pedido():
+    df = crear_df([
+        ["1", "2026-09-01", "Ana", "Teclado", "2", "10"],
+        ["C1", "2026-09-02", "Ana", "Teclado", "-1", "10"],  # cancela 1 teclado
+    ])
+    limpio, descartadas = limpiar_ventas(df)
+    assert descartadas.empty
+    indicadores = calcular_indicadores(limpio)
+    assert indicadores == {
+        "ventas_totales": 10.0,
+        "devoluciones": 10.0,
+        "pedidos": 1,
+        "valor_medio_pedido": 10.0,
+    }

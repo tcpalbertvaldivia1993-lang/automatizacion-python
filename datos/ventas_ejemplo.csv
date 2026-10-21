@@ -9,7 +9,7 @@ id_pedido,fecha,cliente,producto,cantidad,precio_unitario
 1007,2026-09-04,Ana López,Auriculares,dos,45.00
 1008,2026-09-04,Pedro Gil,Webcam,1,abc
 1009,2026-09-05,Lucía Mora,Monitor,2,-189.00
-1010,2026-09-05,Sara Vega,Ratón,-1,12.99
+1010,2026-09-05,Carlos Ruiz,Ratón,-1,12.99
 1011,2026-09-06, Ana López ,Alfombrilla,4,5.00
 1011,2026-09-06,Ana López,Alfombrilla,4,5.00
 1012,2026-09-06,Carlos Ruiz,Disco SSD,1,
@@ -21,3 +21,4 @@ id_pedido,fecha,cliente,producto,cantidad,precio_unitario
 1017,ayer,Sara Vega,Teclado,1,25.50
 1018,,Pedro Gil,Monitor,1,189.00
 1019,2099-01-15,Lucía Mora,Webcam,1,39.90
+1020,2026-09-08,Ana López,Teclado,0,25.50

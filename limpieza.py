@@ -65,7 +65,10 @@ def convertir_fecha(texto):
 
 
 def convertir_cantidad(texto):
-    """Convierte una cantidad a número entero. Devuelve None si no es válida."""
+    """Convierte una cantidad a número entero. Devuelve None si no es válida.
+
+    Las cantidades negativas sí son válidas: son devoluciones o cancelaciones.
+    """
     if pd.isna(texto) or texto == "":
         return None
     try:
@@ -107,9 +110,10 @@ def limpiar_ventas(df):
     # Todas las fechas válidas quedan como "AAAA-MM-DD", sin hora.
     df["fecha"] = fechas[~fecha_mala].astype(str)
 
-    # 3. Cantidades vacías o inválidas.
+    # 3. Cantidades vacías o inválidas. Una cantidad negativa NO se elimina:
+    #    es una devolución o cancelación y se restará de las ventas.
     df["cantidad_num"] = df["cantidad"].apply(convertir_cantidad)
-    cantidad_mala = df["cantidad_num"].isna() | (df["cantidad_num"] <= 0)
+    cantidad_mala = df["cantidad_num"].isna() | (df["cantidad_num"] == 0)
     malas = df[cantidad_mala].copy()
     malas["motivo"] = "cantidad vacía o inválida"
     descartes.append(malas)
@@ -134,12 +138,18 @@ def limpiar_ventas(df):
 
 
 def calcular_indicadores(limpio):
-    """Calcula ventas totales, número de pedidos y valor medio por pedido."""
+    """Calcula ventas totales, número de pedidos y valor medio por pedido.
+
+    Las ventas totales son netas: ya tienen restadas las devoluciones y cancelaciones.
+    Solo cuentan como pedidos los que tienen alguna línea de venta (cantidad positiva).
+    """
     ventas_totales = round(float(limpio["importe"].sum()), 2)
-    pedidos = int(limpio["id_pedido"].nunique())
+    devoluciones = round(float(-limpio.loc[limpio["importe"] < 0, "importe"].sum()), 2)
+    pedidos = int(limpio.loc[limpio["cantidad"] > 0, "id_pedido"].nunique())
     valor_medio = round(ventas_totales / pedidos, 2) if pedidos else 0.0
     return {
         "ventas_totales": ventas_totales,
+        "devoluciones": devoluciones,
         "pedidos": pedidos,
         "valor_medio_pedido": valor_medio,
     }

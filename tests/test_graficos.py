@@ -46,10 +46,25 @@ def test_ventas_por_dia_rellena_dias_sin_ventas(tmp_path):
 
 def test_con_muchos_dias_se_agrupa_por_mes(tmp_path):
     limpio = pd.DataFrame({
-        "fecha": ["2026-01-10", "2026-01-20", "2026-04-05"],
+        "fecha": ["2026-01-01", "2026-01-20", "2026-04-30"],
         "producto": ["Teclado"] * 3,
         "importe": [10.0, 5.0, 7.0],
     })
     titulo, datos = grafico_ventas_en_el_tiempo(limpio, tmp_path / "mes.png")
     assert titulo == "Ventas por mes"
     assert datos.to_dict() == {"2026-01": 15.0, "2026-02": 0.0, "2026-03": 0.0, "2026-04": 7.0}
+
+
+def test_meses_incompletos_se_marcan(tmp_path):
+    limpio = pd.DataFrame({
+        "fecha": ["2026-01-10", "2026-02-15", "2026-04-05"],  # empieza el 10 y acaba el 5
+        "producto": ["Teclado"] * 3,
+        "importe": [10.0, 5.0, 7.0],
+    })
+    _, datos = grafico_ventas_en_el_tiempo(limpio, tmp_path / "mes.png")
+    assert list(datos.index) == [
+        "2026-01 (incompleto)",
+        "2026-02",
+        "2026-03",
+        "2026-04 (incompleto)",
+    ]
