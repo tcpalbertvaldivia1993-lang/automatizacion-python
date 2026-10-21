@@ -13,10 +13,10 @@ COLUMNAS_OBLIGATORIAS = ["id_pedido", "fecha", "cliente", "producto", "cantidad"
 
 
 def comprobar_columnas(df):
-    """Lanza un error si al CSV le falta alguna columna necesaria."""
+    """Lanza un error si al archivo le falta alguna columna necesaria."""
     faltan = [c for c in COLUMNAS_OBLIGATORIAS if c not in df.columns]
     if faltan:
-        raise ValueError(f"Faltan columnas en el CSV: {', '.join(faltan)}")
+        raise ValueError(f"Faltan columnas en el archivo: {', '.join(faltan)}")
 
 
 def quitar_espacios(df):

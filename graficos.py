@@ -45,7 +45,7 @@ def _guardar(figura, ruta):
     plt.close(figura)
 
 
-def grafico_ventas_por_producto(limpio, ruta):
+def grafico_ventas_por_producto(limpio, ruta, moneda="€"):
     """Barras horizontales con el importe vendido de cada producto, de mayor a menor.
 
     Si hay más de MAX_PRODUCTOS productos, solo se muestran los que más venden.
@@ -58,7 +58,7 @@ def grafico_ventas_por_producto(limpio, ruta):
     else:
         titulo = "Ventas por producto"
 
-    figura, ejes = _preparar_ejes(f"{titulo} (€)", alto=0.45 * len(datos) + 1.2)
+    figura, ejes = _preparar_ejes(f"{titulo} ({moneda})", alto=0.45 * len(datos) + 1.2)
     ejes.barh(datos.index, datos.values, color=COLOR_BARRAS, height=0.7)
     ejes.grid(axis="x", color=COLOR_REJILLA, linewidth=0.8)
     ejes.spines["bottom"].set_visible(False)
@@ -72,7 +72,7 @@ def grafico_ventas_por_producto(limpio, ruta):
     return titulo, datos.sort_values(ascending=False)
 
 
-def grafico_ventas_en_el_tiempo(limpio, ruta):
+def grafico_ventas_en_el_tiempo(limpio, ruta, moneda="€"):
     """Columnas con el importe vendido cada día, o cada mes si hay muchos días.
 
     Los días (o meses) sin ventas aparecen con 0, para que no parezca que son seguidos.
@@ -100,7 +100,7 @@ def grafico_ventas_en_el_tiempo(limpio, ruta):
     datos = agrupado.reindex(todos, fill_value=0)
     es_incompleto = [momento in incompletos for momento in datos.index]
 
-    figura, ejes = _preparar_ejes(f"{titulo} (€)")
+    figura, ejes = _preparar_ejes(f"{titulo} ({moneda})")
     etiquetas = [
         momento.strftime(formato_etiqueta) + ("*" if incompleto else "")
         for momento, incompleto in zip(datos.index, es_incompleto)

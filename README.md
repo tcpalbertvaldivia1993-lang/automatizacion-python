@@ -2,8 +2,9 @@
 
 [![Pruebas](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/pruebas.yml/badge.svg)](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/pruebas.yml)
 
-Herramienta en Python que recibe un CSV de ventas, limpia los datos, detecta errores
-y genera automáticamente un informe con los indicadores principales.
+Herramienta en Python que recibe archivos de ventas (CSV o Excel), limpia los datos,
+detecta errores y genera automáticamente un informe con los indicadores principales.
+Puede procesar una carpeta entera y ejecutarse sola cada semana con `cron`.
 
 ## Qué hace
 
@@ -23,12 +24,13 @@ y genera automáticamente un informe con los indicadores principales.
    muchos) y **ventas por día** (por mes si los datos abarcan más de dos meses).
    Los periodos sin ventas aparecen con 0, y el primer o último mes con datos
    incompletos se marca con `*` y un color más claro. Cada gráfico lleva su tabla de datos.
-3. **Resultados** (carpeta `resultados/`):
-   - `ventas_limpio.csv`: datos limpios, con la columna `importe`.
-   - `filas_descartadas.csv`: cada fila eliminada con su motivo.
-   - `informe.md`: resumen con indicadores, gráficos y calidad de los datos.
-   - `graficos/`: los gráficos en PNG.
-   - `registro.log`: registro de cada ejecución.
+3. **Resultados** (carpeta `resultados/`, con una subcarpeta por archivo):
+   - `<archivo>/ventas_limpio.csv`: datos limpios, con la columna `importe`.
+   - `<archivo>/filas_descartadas.csv`: cada fila eliminada con su motivo.
+   - `<archivo>/informe.md`: resumen con indicadores, gráficos y calidad de los datos.
+   - `<archivo>/graficos/`: los gráficos en PNG.
+   - `resumen.md`: al procesar una carpeta, una tabla que compara todos los archivos.
+   - `registro.log`: registro de todas las ejecuciones.
 
 ## Estructura
 
@@ -37,7 +39,9 @@ datos/ventas_ejemplo.csv        CSV de ejemplo con errores a propósito
 limpieza.py                     funciones de limpieza e indicadores
 graficos.py                     gráficos del informe (matplotlib)
 preparar_online_retail.py       descarga y adapta un conjunto de datos real
-main.py                         ejecución automática
+main.py                         ejecución automática (un archivo o una carpeta)
+ejecutar_programado.sh          lo que ejecuta cron: procesa datos/entrada/
+datos/entrada/                  carpeta de entrada para la ejecución programada
 notebooks/analisis_ventas.ipynb el mismo proceso paso a paso
 tests/                          pruebas con pytest
 .github/workflows/pruebas.yml   ejecuta las pruebas en GitHub con cada push
@@ -49,14 +53,17 @@ tests/                          pruebas con pytest
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 
-venv/bin/python main.py                       # usa el CSV de ejemplo
-venv/bin/python main.py ruta/a/mis_ventas.csv # con tu propio archivo
+venv/bin/python main.py                        # usa el CSV de ejemplo
+venv/bin/python main.py ruta/a/mis_ventas.csv  # un CSV
+venv/bin/python main.py ruta/a/mis_ventas.xlsx # un Excel
+venv/bin/python main.py ruta/a/carpeta/        # todos los CSV y Excel de una carpeta
+venv/bin/python main.py ventas.csv --moneda £   # otra moneda en el informe
 
 venv/bin/jupyter notebook notebooks/          # abrir el notebook
 venv/bin/python -m pytest                     # ejecutar las pruebas
 ```
 
-El CSV debe tener las columnas:
+El archivo debe tener las columnas:
 `id_pedido, fecha, cliente, producto, cantidad, precio_unitario`.
 Las fechas pueden ir con o sin hora (`2026-09-01` o `2026-09-01 08:26:00`).
 
@@ -72,11 +79,29 @@ Las fechas pueden ir con o sin hora (`2026-09-01` o `2026-09-01 08:26:00`).
 
 Las cancelaciones de este conjunto (pedidos que empiezan por `C`) tienen cantidad
 negativa, así que la herramienta las resta de las ventas automáticamente.
-Los importes están en libras (£), aunque el informe muestra el símbolo €.
+Los importes están en libras, así que conviene usar `--moneda £`.
 
 ```bash
 venv/bin/python preparar_online_retail.py              # ~2 min, solo la primera vez
-venv/bin/python main.py datos/reales/online_retail.csv # ~25 s
+venv/bin/python main.py datos/reales/online_retail.csv --moneda £ # ~25 s
 ```
 
 Los datos reales se guardan en `datos/reales/`, que no se sube a GitHub.
+
+## Ejecución programada
+
+Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, `cron` ejecuta
+`ejecutar_programado.sh`, que:
+
+1. procesa todos los CSV y Excel de `datos/entrada/`,
+2. genera sus informes y `resultados/resumen.md`,
+3. mueve los que salieron bien a `datos/entrada/procesados/` (los que fallan se quedan,
+   para revisarlos con `resultados/registro.log`).
+
+La línea de `crontab -e` es:
+
+```
+0 8 * * 1 /home/administrator/automatizacion-python/ejecutar_programado.sh
+```
+
+En WSL, `cron` solo funciona mientras WSL está abierto.
