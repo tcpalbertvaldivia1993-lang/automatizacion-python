@@ -1,8 +1,9 @@
 #!/bin/bash
 # Procesa todos los archivos que haya en datos/entrada/ y mueve los correctos
-# a datos/entrada/procesados/. Pensado para ejecutarse con cron.
+# a datos/entrada/procesados/. Lo lanza el Programador de tareas de Windows
+# (ver programar_windows.ps1), aunque también serviría con cron.
 #
-# cron arranca en otra carpeta, así que primero vamos a la del proyecto
+# La tarea programada arranca en otra carpeta, así que primero vamos a la del proyecto
 # (main.py usa rutas relativas como "resultados/").
 cd "$(dirname "$0")" || exit 1
 mkdir -p resultados

@@ -4,7 +4,7 @@
 
 Herramienta en Python que recibe archivos de ventas (CSV o Excel), limpia los datos,
 detecta errores y genera automáticamente un informe con los indicadores principales.
-Puede procesar una carpeta entera y ejecutarse sola cada semana con `cron`.
+Puede procesar una carpeta entera y ejecutarse sola cada semana.
 
 ## Qué hace
 
@@ -40,7 +40,8 @@ limpieza.py                     funciones de limpieza e indicadores
 graficos.py                     gráficos del informe (matplotlib)
 preparar_online_retail.py       descarga y adapta un conjunto de datos real
 main.py                         ejecución automática (un archivo o una carpeta)
-ejecutar_programado.sh          lo que ejecuta cron: procesa datos/entrada/
+ejecutar_programado.sh          lo que ejecuta la tarea programada: procesa datos/entrada/
+programar_windows.ps1           crea la tarea en el Programador de tareas de Windows
 datos/entrada/                  carpeta de entrada para la ejecución programada
 notebooks/analisis_ventas.ipynb el mismo proceso paso a paso
 tests/                          pruebas con pytest
@@ -90,18 +91,22 @@ Los datos reales se guardan en `datos/reales/`, que no se sube a GitHub.
 
 ## Ejecución programada
 
-Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, `cron` ejecuta
-`ejecutar_programado.sh`, que:
+Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, el
+**Programador de tareas de Windows** abre WSL y ejecuta `ejecutar_programado.sh`, que:
 
 1. procesa todos los CSV y Excel de `datos/entrada/`,
 2. genera sus informes y `resultados/resumen.md`,
 3. mueve los que salieron bien a `datos/entrada/procesados/` (los que fallan se quedan,
    para revisarlos con `resultados/registro.log`).
 
-La línea de `crontab -e` es:
+Si el PC estaba apagado el lunes a las 08:00, la tarea se ejecuta en cuanto se enciende.
+Se usa el Programador de tareas y no `cron` porque `cron` solo funciona con WSL abierto.
 
-```
-0 8 * * 1 /home/administrator/automatizacion-python/ejecutar_programado.sh
+Para crear la tarea (una sola vez, desde WSL):
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w programar_windows.ps1)"
 ```
 
-En WSL, `cron` solo funciona mientras WSL está abierto.
+Para verla o cambiarla: menú Inicio → "Programador de tareas" →
+"automatizacion-python - informe semanal".
