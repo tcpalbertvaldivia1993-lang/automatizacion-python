@@ -14,10 +14,13 @@ y genera automáticamente un informe con los indicadores principales.
    - Elimina precios vacíos, mal escritos (`abc`) o ≤ 0.
      Los formatos recuperables como `7,50` o `899.99 €` se corrigen en lugar de eliminarse.
 2. **Indicadores**: ventas totales, número de pedidos y valor medio por pedido.
+   Además, gráficos de **ventas por producto** y **ventas por día** (los días sin
+   ventas aparecen con 0), cada uno con su tabla de datos.
 3. **Resultados** (carpeta `resultados/`):
    - `ventas_limpio.csv`: datos limpios, con la columna `importe`.
    - `filas_descartadas.csv`: cada fila eliminada con su motivo.
-   - `informe.md`: resumen con indicadores y calidad de los datos.
+   - `informe.md`: resumen con indicadores, gráficos y calidad de los datos.
+   - `graficos/`: los gráficos en PNG.
    - `registro.log`: registro de cada ejecución.
 
 ## Estructura
@@ -25,6 +28,7 @@ y genera automáticamente un informe con los indicadores principales.
 ```
 datos/ventas_ejemplo.csv        CSV de ejemplo con errores a propósito
 limpieza.py                     funciones de limpieza e indicadores
+graficos.py                     gráficos del informe (matplotlib)
 main.py                         ejecución automática
 notebooks/analisis_ventas.ipynb el mismo proceso paso a paso
 tests/                          pruebas con pytest

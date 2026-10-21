@@ -7,7 +7,8 @@ Uso:
 Resultados (carpeta resultados/):
     ventas_limpio.csv      -> datos ya limpios
     filas_descartadas.csv  -> filas eliminadas y el motivo
-    informe.md             -> resumen con los indicadores
+    informe.md             -> resumen con los indicadores y gráficos
+    graficos/              -> imágenes PNG de los gráficos
     registro.log           -> registro de cada ejecución
 """
 
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from graficos import grafico_ventas_por_dia, grafico_ventas_por_producto
 from limpieza import calcular_indicadores, limpiar_ventas
 
 CARPETA_RESULTADOS = Path("resultados")
@@ -37,7 +39,31 @@ def configurar_registro():
     )
 
 
-def escribir_informe(archivo, filas_originales, limpio, descartadas, indicadores):
+def crear_graficos(limpio):
+    """Genera los gráficos en resultados/graficos/.
+
+    Devuelve una lista con (título, imagen, nombre de columna, datos) de cada gráfico.
+    """
+    carpeta = CARPETA_RESULTADOS / "graficos"
+    carpeta.mkdir(exist_ok=True)
+    graficos = []
+    for titulo, nombre, columna, funcion in [
+        ("Ventas por producto", "ventas_por_producto.png", "Producto", grafico_ventas_por_producto),
+        ("Ventas por día", "ventas_por_dia.png", "Fecha", grafico_ventas_por_dia),
+    ]:
+        datos = funcion(limpio, carpeta / nombre)
+        graficos.append((titulo, f"graficos/{nombre}", columna, datos))
+    return graficos
+
+
+def tabla_markdown(datos, columna):
+    """Convierte una serie de pandas en una tabla Markdown de dos columnas."""
+    lineas = [f"| {columna} | Ventas (€) |", "|---|---:|"]
+    lineas += [f"| {indice} | {valor:.2f} |" for indice, valor in datos.items()]
+    return lineas
+
+
+def escribir_informe(archivo, filas_originales, limpio, descartadas, indicadores, graficos):
     """Crea el informe en formato Markdown."""
     resumen_motivos = descartadas["motivo"].value_counts()
     lineas = [
@@ -52,6 +78,11 @@ def escribir_informe(archivo, filas_originales, limpio, descartadas, indicadores
         f"- **Pedidos:** {indicadores['pedidos']}",
         f"- **Valor medio por pedido:** {indicadores['valor_medio_pedido']:.2f} €",
         "",
+    ]
+    for titulo, imagen, columna, datos in graficos:
+        lineas += [f"## {titulo}", "", f"![{titulo}]({imagen})", ""]
+        lineas += tabla_markdown(datos, columna) + [""]
+    lineas += [
         "## Calidad de los datos",
         "",
         f"- Filas originales: {filas_originales}",
@@ -97,7 +128,9 @@ def main():
 
     limpio.to_csv(CARPETA_RESULTADOS / "ventas_limpio.csv", index=False)
     descartadas.to_csv(CARPETA_RESULTADOS / "filas_descartadas.csv", index=False)
-    ruta_informe = escribir_informe(archivo, len(df), limpio, descartadas, indicadores)
+    graficos = crear_graficos(limpio)
+    logging.info("Gráficos generados: %d", len(graficos))
+    ruta_informe = escribir_informe(archivo, len(df), limpio, descartadas, indicadores, graficos)
     logging.info("Informe generado en %s", ruta_informe)
     logging.info("Fin de la ejecución")
 
