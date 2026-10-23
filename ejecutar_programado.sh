@@ -2,7 +2,7 @@
 # Procesa todos los archivos que haya en datos/entrada/, mueve los correctos
 # a datos/entrada/procesados/ y envía los informes por email (configuración en .env).
 # Guarda los totales en resultados/historial.csv para avisar si cambian bruscamente
-# respecto a la semana anterior. Lo lanza el Programador de tareas de Windows
+# respecto a la media de las 4 semanas anteriores. Lo lanza el Programador de tareas de Windows
 # (ver programar_windows.ps1), aunque también serviría con cron.
 #
 # La tarea programada arranca en otra carpeta, así que primero vamos a la del proyecto

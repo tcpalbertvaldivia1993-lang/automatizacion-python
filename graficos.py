@@ -132,7 +132,8 @@ def grafico_ventas_en_el_tiempo(limpio, ruta):
 
 def grafico_evolucion(historial, ruta):
     """Columnas con las ventas netas de cada ejecución (cada semana), de la más antigua
-    a la más reciente. Las que cambiaron bruscamente respecto a la anterior van en rojo
+    a la más reciente. Las que cambiaron bruscamente respecto a la media de las
+    anteriores van en rojo
     y con el % encima.
 
     historial debe venir de alertas.marcar_cambios_bruscos (columnas cambio y brusco).

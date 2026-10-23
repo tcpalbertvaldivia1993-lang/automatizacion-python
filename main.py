@@ -15,11 +15,11 @@ Opciones:
                           ver .env.ejemplo)
     --historial RUTA      guarda los totales de cada ejecución en ese CSV y avisa
                           si las ventas o los pedidos cambian bruscamente
-                          respecto a la ejecución anterior
-    --umbral PORCENTAJE   cuánto tiene que cambiar para avisar (por defecto 20 %)
+                          respecto a la media de las 4 ejecuciones anteriores
+    --umbral PORCENTAJE   cuánto tiene que cambiar para avisar (por defecto 30 %)
     --umbral-producto PORCENTAJE
-                          lo mismo para cada uno de los 10 productos que más
-                          vendían (por defecto 50 %)
+                          cuánto tiene que cambiar uno de los 10 productos que más
+                          venden para mencionarlo en el email (por defecto 50 %)
 
 Resultados (carpeta resultados/):
     <nombre del archivo>/ventas_limpio.csv      -> datos ya limpios
@@ -222,50 +222,51 @@ def ventas_por_producto(archivos):
     return pd.concat(limpios).groupby("producto")["importe"].sum()
 
 
-def comparar_productos_con_anterior(archivos, ruta_historial, umbral):
-    """Guarda las ventas por producto en su historial y busca cambios bruscos.
+def comparar_productos_con_anteriores(archivos, ruta_historial, umbral):
+    """Guarda las ventas por producto en su historial y busca los que más han cambiado.
 
-    Devuelve la lista de cambios bruscos, o None si no hay con qué comparar.
+    Devuelve la lista de esos productos, o None si no hay con qué comparar.
     """
     ruta = alertas.ruta_historial_productos(ruta_historial)
     actual = ventas_por_producto(archivos)
-    anterior = alertas.leer_productos_anteriores(ruta)
+    referencia = alertas.leer_productos_referencia(ruta)
     alertas.guardar_productos(ruta, actual)
-    if anterior is None:
+    if referencia is None:
         return None
-    cambios = alertas.comparar_productos(actual, anterior, umbral)
-    for c in cambios:
-        logging.warning("Cambio brusco en el producto %s: %+.1f %%", c["producto"], c["cambio"])
+    cambios = alertas.comparar_productos(actual, referencia, umbral)
+    for c in cambios:  # solo informativo: no es un aviso
+        logging.info("Producto que más cambió: %s %+.1f %%", c["producto"], c["cambio"])
     return cambios
 
 
-def comparar_con_anterior(resultados, ruta_historial, umbral,
-                          umbral_producto=alertas.UMBRAL_PRODUCTO_POR_DEFECTO):
+def comparar_con_anteriores(resultados, ruta_historial, umbral,
+                            umbral_producto=alertas.UMBRAL_PRODUCTO_POR_DEFECTO):
     """Guarda los totales y las ventas por producto de esta ejecución en los historiales
-    y los compara con la ejecución anterior.
+    y los compara con la media de las últimas ejecuciones.
 
-    Devuelve {"fecha_anterior": ..., "cambios": [...], "productos": [...]},
-    o None si no hay con qué comparar.
+    Devuelve {"semanas": ..., "cambios": [...], "productos": [...]}, donde "semanas" es
+    cuántas ejecuciones entran en la media, o None si no hay con qué comparar.
     """
     archivos = [archivo for archivo, indicadores in resultados if indicadores is not None]
     if not archivos:
         return None
     totales = alertas.sumar_indicadores([indicadores for _, indicadores in resultados
                                          if indicadores is not None])
-    anterior = alertas.leer_ultima_ejecucion(ruta_historial)
+    # La referencia se lee antes de guardar: esta ejecución no entra en su propia media.
+    referencia = alertas.leer_referencia(ruta_historial)
     alertas.guardar_ejecucion(ruta_historial, totales)
-    productos = comparar_productos_con_anterior(archivos, ruta_historial, umbral_producto)
-    if anterior is None:
+    productos = comparar_productos_con_anteriores(archivos, ruta_historial, umbral_producto)
+    if referencia is None:
         logging.info("Primera ejecución con historial: la próxima vez habrá con qué comparar")
         return None
 
-    fecha_anterior = f"{datetime.strptime(anterior['fecha'], '%Y-%m-%d %H:%M'):%d/%m/%Y}"
-    cambios = alertas.comparar(totales, anterior, umbral)
+    cambios = alertas.comparar(totales, referencia, umbral)
     for c in cambios:
         if c["brusco"]:
-            logging.warning("Cambio brusco en %s: %+.1f %% respecto a la ejecución del %s",
-                            c["nombre"].lower(), c["cambio"], fecha_anterior)
-    return {"fecha_anterior": fecha_anterior, "cambios": cambios, "productos": productos or []}
+            logging.warning("Cambio brusco en %s: %+.1f %% respecto a la media de las %d "
+                            "ejecuciones anteriores", c["nombre"].lower(), c["cambio"],
+                            referencia["semanas"])
+    return {"semanas": referencia["semanas"], "cambios": cambios, "productos": productos or []}
 
 
 def crear_grafico_evolucion(ruta_historial, umbral):
@@ -285,7 +286,7 @@ def crear_grafico_evolucion(ruta_historial, umbral):
 def enviar_por_email(resultados, moneda, comparacion=None, evolucion=None):
     """Envía un email con los indicadores de cada archivo y sus informes HTML adjuntos.
 
-    Si hay comparación con la ejecución anterior, el email la muestra y el asunto
+    Si hay comparación con las ejecuciones anteriores, el email la muestra y el asunto
     avisa de los cambios bruscos. Si hay gráfico de evolución, va dentro del cuerpo.
     """
     config = enviar_email.leer_configuracion()
@@ -309,9 +310,6 @@ def enviar_por_email(resultados, moneda, comparacion=None, evolucion=None):
     for c in (comparacion or {}).get("cambios", []):
         if c["brusco"]:
             asunto += f" · ⚠ {c['nombre']} {c['cambio']:+.0f} %"
-    productos = len((comparacion or {}).get("productos", []))
-    if productos:
-        asunto += f" · ⚠ {productos} {'producto' if productos == 1 else 'productos'}"
     adjuntos = [(f"informe_{archivo.stem}.html", CARPETA_RESULTADOS / archivo.stem / "informe.html")
                 for archivo in correctos]
 
@@ -341,12 +339,13 @@ def leer_argumentos():
                         help="enviar los informes por email (configuración en .env)")
     parser.add_argument("--historial", type=Path,
                         help="CSV donde se guardan los totales de cada ejecución para "
-                             "compararlos con la anterior y avisar de cambios bruscos")
+                             "compararlos con la media de las 4 anteriores y avisar "
+                             "de cambios bruscos")
     parser.add_argument("--umbral", type=float, default=alertas.UMBRAL_POR_DEFECTO,
-                        help="%% de subida o bajada que se considera brusco (por defecto 20)")
+                        help="%% de subida o bajada que se considera brusco (por defecto 30)")
     parser.add_argument("--umbral-producto", type=float,
                         default=alertas.UMBRAL_PRODUCTO_POR_DEFECTO,
-                        help="lo mismo para cada producto por separado (por defecto 50)")
+                        help="%% de cambio de un producto para mencionarlo (por defecto 50)")
     return parser.parse_args()
 
 
@@ -374,8 +373,8 @@ def main():
 
     comparacion = evolucion = None
     if argumentos.historial:
-        comparacion = comparar_con_anterior(resultados, argumentos.historial, argumentos.umbral,
-                                            argumentos.umbral_producto)
+        comparacion = comparar_con_anteriores(resultados, argumentos.historial, argumentos.umbral,
+                                              argumentos.umbral_producto)
         evolucion = crear_grafico_evolucion(argumentos.historial, argumentos.umbral)
 
     if argumentos.ruta.is_dir():
