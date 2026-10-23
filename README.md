@@ -33,6 +33,7 @@ Puede procesar una carpeta entera, ejecutarse sola cada semana y enviar los info
    - `<archivo>/graficos/`: los gráficos en PNG.
    - `resumen.html`: al procesar una carpeta, una tabla que compara todos los archivos.
    - `registro.log`: registro de todas las ejecuciones.
+   - `historial.csv`: totales de cada ejecución programada, para detectar cambios bruscos.
 
 ## Estructura
 
@@ -43,6 +44,7 @@ graficos.py                     gráficos del informe (matplotlib)
 plantillas/                     diseño HTML de los informes (Jinja2)
 formato.py                      números en formato español: 1.234,56
 enviar_email.py                 envío de los informes por email (SMTP)
+alertas.py                      historial de ejecuciones y aviso de cambios bruscos
 .env.ejemplo                    plantilla de la configuración del email
 preparar_online_retail.py       descarga y adapta un conjunto de datos real
 main.py                         ejecución automática (un archivo o una carpeta)
@@ -105,7 +107,9 @@ Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, el
 2. genera sus informes y `resultados/resumen.html`,
 3. mueve los que salieron bien a `datos/entrada/procesados/` (los que fallan se quedan,
    para revisarlos con `resultados/registro.log`),
-4. envía un email con los indicadores de cada archivo y sus informes HTML adjuntos.
+4. compara los totales con los del lunes anterior (`resultados/historial.csv`),
+5. envía un email con los indicadores de cada archivo, sus informes HTML adjuntos y
+   un aviso si las ventas o los pedidos cambiaron bruscamente.
 
 Si el PC estaba apagado el lunes a las 08:00, la tarea se ejecuta en cuanto se enciende.
 Se usa el Programador de tareas y no `cron` porque `cron` solo funciona con WSL abierto.
@@ -132,3 +136,23 @@ los informes completos como adjuntos HTML. Los gráficos van en los adjuntos y n
 cuerpo, porque Gmail y otros programas de correo bloquean las imágenes incrustadas.
 
 `.env` contiene tu contraseña: está en `.gitignore` y **nunca** se sube a GitHub.
+
+## Aviso de cambios bruscos
+
+Con `--historial`, cada ejecución guarda sus totales (ventas netas, devoluciones,
+pedidos y valor medio) en una fila de un CSV. La siguiente ejecución los compara con
+la anterior: si las **ventas netas** o los **pedidos** suben o bajan un 20 % o más,
+es un cambio brusco.
+
+```bash
+venv/bin/python main.py datos/entrada --historial resultados/historial.csv
+venv/bin/python main.py datos/entrada --historial resultados/historial.csv --umbral 30
+```
+
+- El registro muestra un aviso: `Cambio brusco en ventas netas: -31.2 %`.
+- Con `--enviar-email`, el email incluye un recuadro con la comparación (en rojo si
+  hay un cambio brusco) y el asunto lo avisa: `Informe de ventas · 23/10/2026 · ⚠ Ventas netas -31 %`.
+
+La ejecución programada ya usa `resultados/historial.csv`, así que cada lunes se compara
+con el lunes anterior. Las ejecuciones a mano sin `--historial` no se guardan, para que
+las pruebas no estropeen la comparación. La primera vez no hay nada con qué comparar.

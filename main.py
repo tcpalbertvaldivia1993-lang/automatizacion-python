@@ -13,6 +13,10 @@ Opciones:
                           una subcarpeta "procesados/" junto a él (útil al programarlo)
     --enviar-email        envía los informes por email (configuración en .env,
                           ver .env.ejemplo)
+    --historial RUTA      guarda los totales de cada ejecución en ese CSV y avisa
+                          si las ventas o los pedidos cambian bruscamente
+                          respecto a la ejecución anterior
+    --umbral PORCENTAJE   cuánto tiene que cambiar para avisar (por defecto 20 %)
 
 Resultados (carpeta resultados/):
     <nombre del archivo>/ventas_limpio.csv      -> datos ya limpios
@@ -34,6 +38,7 @@ from pathlib import Path
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+import alertas
 import enviar_email
 from formato import numero
 from graficos import grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
@@ -201,8 +206,36 @@ def escribir_resumen(resultados, moneda):
     return ruta
 
 
-def enviar_por_email(resultados, moneda):
-    """Envía un email con los indicadores de cada archivo y sus informes HTML adjuntos."""
+def comparar_con_anterior(resultados, ruta_historial, umbral):
+    """Guarda los totales de esta ejecución en el historial y los compara con la anterior.
+
+    Devuelve {"fecha_anterior": ..., "cambios": [...]}, o None si no hay con qué comparar.
+    """
+    correctos = [indicadores for _, indicadores in resultados if indicadores is not None]
+    if not correctos:
+        return None
+    totales = alertas.sumar_indicadores(correctos)
+    anterior = alertas.leer_ultima_ejecucion(ruta_historial)
+    alertas.guardar_ejecucion(ruta_historial, totales)
+    if anterior is None:
+        logging.info("Primera ejecución con historial: la próxima vez habrá con qué comparar")
+        return None
+
+    fecha_anterior = f"{datetime.strptime(anterior['fecha'], '%Y-%m-%d %H:%M'):%d/%m/%Y}"
+    cambios = alertas.comparar(totales, anterior, umbral)
+    for c in cambios:
+        if c["brusco"]:
+            logging.warning("Cambio brusco en %s: %+.1f %% respecto a la ejecución del %s",
+                            c["nombre"].lower(), c["cambio"], fecha_anterior)
+    return {"fecha_anterior": fecha_anterior, "cambios": cambios}
+
+
+def enviar_por_email(resultados, moneda, comparacion=None):
+    """Envía un email con los indicadores de cada archivo y sus informes HTML adjuntos.
+
+    Si hay comparación con la ejecución anterior, el email la muestra y el asunto
+    avisa de los cambios bruscos.
+    """
     config = enviar_email.leer_configuracion()
     correctos = [archivo for archivo, indicadores in resultados if indicadores is not None]
     errores = len(resultados) - len(correctos)
@@ -215,16 +248,21 @@ def enviar_por_email(resultados, moneda):
         errores=errores,
         filas=[{"nombre": archivo.name, "indicadores": indicadores}
                for archivo, indicadores in resultados],
+        comparacion=comparacion,
     )
     asunto = f"Informe de ventas · {fecha}"
     if errores:
         asunto += f" · ⚠ {errores} con errores"
+    for c in (comparacion or {}).get("cambios", []):
+        if c["brusco"]:
+            asunto += f" · ⚠ {c['nombre']} {c['cambio']:+.0f} %"
     adjuntos = [(f"informe_{archivo.stem}.html", CARPETA_RESULTADOS / archivo.stem / "informe.html")
                 for archivo in correctos]
 
     mensaje = enviar_email.construir_mensaje(config, asunto, html, adjuntos)
     enviar_email.enviar(config, mensaje)
-    logging.info("Email enviado a %s con %d informes adjuntos", config["EMAIL_DESTINO"], len(adjuntos))
+    logging.info("Email enviado a %s con %d %s", config["EMAIL_DESTINO"], len(adjuntos),
+                 "informe adjunto" if len(adjuntos) == 1 else "informes adjuntos")
 
 
 def mover_a_procesados(archivo):
@@ -244,6 +282,11 @@ def leer_argumentos():
                         help="mover cada archivo procesado sin errores a procesados/")
     parser.add_argument("--enviar-email", action="store_true",
                         help="enviar los informes por email (configuración en .env)")
+    parser.add_argument("--historial", type=Path,
+                        help="CSV donde se guardan los totales de cada ejecución para "
+                             "compararlos con la anterior y avisar de cambios bruscos")
+    parser.add_argument("--umbral", type=float, default=alertas.UMBRAL_POR_DEFECTO,
+                        help="%% de subida o bajada que se considera brusco (por defecto 20)")
     return parser.parse_args()
 
 
@@ -253,6 +296,8 @@ def main():
     logging.info("Inicio de la ejecución con %s", argumentos.ruta)
 
     archivos = buscar_archivos(argumentos.ruta)
+    if argumentos.historial:  # por si el historial está en la misma carpeta: no es un archivo de ventas
+        archivos = [a for a in archivos if a.resolve() != argumentos.historial.resolve()]
     if not archivos:
         logging.info("No hay archivos CSV ni Excel en %s. Nada que hacer.", argumentos.ruta)
         logging.info("Fin de la ejecución")
@@ -268,11 +313,15 @@ def main():
     if argumentos.ruta.is_dir():
         logging.info("Resumen generado en %s", escribir_resumen(resultados, argumentos.moneda))
 
+    comparacion = None
+    if argumentos.historial:
+        comparacion = comparar_con_anterior(resultados, argumentos.historial, argumentos.umbral)
+
     errores = sum(1 for _, indicadores in resultados if indicadores is None)
     email_fallido = False
     if argumentos.enviar_email:
         try:
-            enviar_por_email(resultados, argumentos.moneda)
+            enviar_por_email(resultados, argumentos.moneda, comparacion)
         except Exception as error:  # configuración incompleta, sin internet, contraseña mal...
             logging.error("No se pudo enviar el email: %s", error)
             email_fallido = True

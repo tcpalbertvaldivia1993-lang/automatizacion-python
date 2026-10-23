@@ -10,6 +10,31 @@
     {% if errores %}· <strong style="color:#d03b3b;">{{ errores }} con errores</strong>{% endif %}
   </p>
 
+  {% if comparacion %}
+  {% set bruscos = comparacion.cambios | selectattr("brusco") | list %}
+  <div style="border-radius:8px; padding:12px 14px; margin:0 0 16px; font-size:14px;
+              background:{{ '#fbeaea' if bruscos else '#f4f3ef' }};
+              border:1px solid {{ '#d03b3b' if bruscos else '#e4e3df' }};">
+    <div style="font-weight:600; margin-bottom:6px;">
+      {% if bruscos %}<span style="color:#d03b3b;">⚠ Cambio brusco</span> respecto a la ejecución del {{ comparacion.fecha_anterior }}
+      {% else %}Sin cambios bruscos respecto a la ejecución del {{ comparacion.fecha_anterior }}{% endif %}
+    </div>
+    <table style="border-collapse:collapse;">
+      {% for c in comparacion.cambios %}
+      <tr>
+        <td style="color:#52514e; padding:2px 16px 2px 0;">{{ c.nombre }}</td>
+        <td style="text-align:right; padding:2px 16px 2px 0;">
+          {% if c.clave == "pedidos" %}{{ c.anterior | numero(0) }} → {{ c.actual | numero(0) }}
+          {% else %}{{ c.anterior | numero }} → {{ c.actual | numero }} {{ moneda }}{% endif %}</td>
+        <td style="text-align:right; {{ 'color:#d03b3b; font-weight:600;' if c.brusco }}">
+          {% if c.cambio is none %}–{% else %}{{ "+" if c.cambio > 0 }}{{ c.cambio | numero(1) }} %{% endif %}
+          {% if c.brusco %}({{ "subida" if c.cambio > 0 else "bajada" }}){% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
   {% for fila in filas %}
   <div style="border-top:1px solid #e4e3df; padding:12px 0;">
     <div style="font-weight:600; font-size:15px; margin-bottom:6px;">{{ fila.nombre }}</div>
