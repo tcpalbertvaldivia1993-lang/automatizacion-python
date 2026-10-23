@@ -17,6 +17,9 @@ Opciones:
                           si las ventas o los pedidos cambian bruscamente
                           respecto a la ejecución anterior
     --umbral PORCENTAJE   cuánto tiene que cambiar para avisar (por defecto 20 %)
+    --umbral-producto PORCENTAJE
+                          lo mismo para cada uno de los 10 productos que más
+                          vendían (por defecto 50 %)
 
 Resultados (carpeta resultados/):
     <nombre del archivo>/ventas_limpio.csv      -> datos ya limpios
@@ -211,17 +214,47 @@ def escribir_resumen(resultados, moneda, evolucion=None):
     return ruta
 
 
-def comparar_con_anterior(resultados, ruta_historial, umbral):
-    """Guarda los totales de esta ejecución en el historial y los compara con la anterior.
+def ventas_por_producto(archivos):
+    """Suma el importe de cada producto en los datos limpios de todos los archivos."""
+    limpios = [pd.read_csv(CARPETA_RESULTADOS / archivo.stem / "ventas_limpio.csv",
+                           usecols=["producto", "importe"], dtype={"producto": str})
+               for archivo in archivos]
+    return pd.concat(limpios).groupby("producto")["importe"].sum()
 
-    Devuelve {"fecha_anterior": ..., "cambios": [...]}, o None si no hay con qué comparar.
+
+def comparar_productos_con_anterior(archivos, ruta_historial, umbral):
+    """Guarda las ventas por producto en su historial y busca cambios bruscos.
+
+    Devuelve la lista de cambios bruscos, o None si no hay con qué comparar.
     """
-    correctos = [indicadores for _, indicadores in resultados if indicadores is not None]
-    if not correctos:
+    ruta = alertas.ruta_historial_productos(ruta_historial)
+    actual = ventas_por_producto(archivos)
+    anterior = alertas.leer_productos_anteriores(ruta)
+    alertas.guardar_productos(ruta, actual)
+    if anterior is None:
         return None
-    totales = alertas.sumar_indicadores(correctos)
+    cambios = alertas.comparar_productos(actual, anterior, umbral)
+    for c in cambios:
+        logging.warning("Cambio brusco en el producto %s: %+.1f %%", c["producto"], c["cambio"])
+    return cambios
+
+
+def comparar_con_anterior(resultados, ruta_historial, umbral,
+                          umbral_producto=alertas.UMBRAL_PRODUCTO_POR_DEFECTO):
+    """Guarda los totales y las ventas por producto de esta ejecución en los historiales
+    y los compara con la ejecución anterior.
+
+    Devuelve {"fecha_anterior": ..., "cambios": [...], "productos": [...]},
+    o None si no hay con qué comparar.
+    """
+    archivos = [archivo for archivo, indicadores in resultados if indicadores is not None]
+    if not archivos:
+        return None
+    totales = alertas.sumar_indicadores([indicadores for _, indicadores in resultados
+                                         if indicadores is not None])
     anterior = alertas.leer_ultima_ejecucion(ruta_historial)
     alertas.guardar_ejecucion(ruta_historial, totales)
+    productos = comparar_productos_con_anterior(archivos, ruta_historial, umbral_producto)
     if anterior is None:
         logging.info("Primera ejecución con historial: la próxima vez habrá con qué comparar")
         return None
@@ -232,7 +265,7 @@ def comparar_con_anterior(resultados, ruta_historial, umbral):
         if c["brusco"]:
             logging.warning("Cambio brusco en %s: %+.1f %% respecto a la ejecución del %s",
                             c["nombre"].lower(), c["cambio"], fecha_anterior)
-    return {"fecha_anterior": fecha_anterior, "cambios": cambios}
+    return {"fecha_anterior": fecha_anterior, "cambios": cambios, "productos": productos or []}
 
 
 def crear_grafico_evolucion(ruta_historial, umbral):
@@ -276,6 +309,9 @@ def enviar_por_email(resultados, moneda, comparacion=None, evolucion=None):
     for c in (comparacion or {}).get("cambios", []):
         if c["brusco"]:
             asunto += f" · ⚠ {c['nombre']} {c['cambio']:+.0f} %"
+    productos = len((comparacion or {}).get("productos", []))
+    if productos:
+        asunto += f" · ⚠ {productos} {'producto' if productos == 1 else 'productos'}"
     adjuntos = [(f"informe_{archivo.stem}.html", CARPETA_RESULTADOS / archivo.stem / "informe.html")
                 for archivo in correctos]
 
@@ -308,6 +344,9 @@ def leer_argumentos():
                              "compararlos con la anterior y avisar de cambios bruscos")
     parser.add_argument("--umbral", type=float, default=alertas.UMBRAL_POR_DEFECTO,
                         help="%% de subida o bajada que se considera brusco (por defecto 20)")
+    parser.add_argument("--umbral-producto", type=float,
+                        default=alertas.UMBRAL_PRODUCTO_POR_DEFECTO,
+                        help="lo mismo para cada producto por separado (por defecto 50)")
     return parser.parse_args()
 
 
@@ -317,8 +356,10 @@ def main():
     logging.info("Inicio de la ejecución con %s", argumentos.ruta)
 
     archivos = buscar_archivos(argumentos.ruta)
-    if argumentos.historial:  # por si el historial está en la misma carpeta: no es un archivo de ventas
-        archivos = [a for a in archivos if a.resolve() != argumentos.historial.resolve()]
+    if argumentos.historial:  # por si los historiales están en la misma carpeta: no son ventas
+        historiales = {argumentos.historial.resolve(),
+                       alertas.ruta_historial_productos(argumentos.historial).resolve()}
+        archivos = [a for a in archivos if a.resolve() not in historiales]
     if not archivos:
         logging.info("No hay archivos CSV ni Excel en %s. Nada que hacer.", argumentos.ruta)
         logging.info("Fin de la ejecución")
@@ -333,7 +374,8 @@ def main():
 
     comparacion = evolucion = None
     if argumentos.historial:
-        comparacion = comparar_con_anterior(resultados, argumentos.historial, argumentos.umbral)
+        comparacion = comparar_con_anterior(resultados, argumentos.historial, argumentos.umbral,
+                                            argumentos.umbral_producto)
         evolucion = crear_grafico_evolucion(argumentos.historial, argumentos.umbral)
 
     if argumentos.ruta.is_dir():

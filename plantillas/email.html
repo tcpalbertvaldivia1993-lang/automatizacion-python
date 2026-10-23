@@ -11,7 +11,7 @@
   </p>
 
   {% if comparacion %}
-  {% set bruscos = comparacion.cambios | selectattr("brusco") | list %}
+  {% set bruscos = (comparacion.cambios | selectattr("brusco") | list) + comparacion.productos %}
   <div style="border-radius:8px; padding:12px 14px; margin:0 0 16px; font-size:14px;
               background:{{ '#fbeaea' if bruscos else '#f4f3ef' }};
               border:1px solid {{ '#d03b3b' if bruscos else '#e4e3df' }};">
@@ -32,6 +32,24 @@
       </tr>
       {% endfor %}
     </table>
+    {% if comparacion.productos %}
+    <div style="font-weight:600; margin:12px 0 6px;">
+      <span style="color:#d03b3b;">⚠</span> Productos con cambio brusco
+      <span style="font-weight:400; color:#52514e;">(de los 10 que más vendían)</span>
+    </div>
+    <table style="border-collapse:collapse;">
+      {% for p in comparacion.productos %}
+      <tr>
+        <td style="color:#52514e; padding:2px 16px 2px 0;">{{ p.producto }}</td>
+        <td style="text-align:right; padding:2px 16px 2px 0;">
+          {{ p.anterior | numero }} → {{ p.actual | numero }} {{ moneda }}</td>
+        <td style="text-align:right; color:#d03b3b; font-weight:600;">
+          {{ "+" if p.cambio > 0 }}{{ p.cambio | numero(1) }} %
+          ({{ "subida" if p.cambio > 0 else ("sin ventas" if p.actual == 0 else "bajada") }})</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
   </div>
   {% endif %}
 

@@ -90,7 +90,52 @@ def test_grafico_de_evolucion_en_el_email(tmp_path, monkeypatch):
     assert "semana a semana" in html and "data:image/png;base64," in html
 
 
-def test_primera_ejecucion_no_compara(tmp_path):
-    resultados = [(CSV_EJEMPLO, SEMANA_1)]
+def test_primera_ejecucion_no_compara(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "CARPETA_RESULTADOS", tmp_path)
+    resultados = [(CSV_EJEMPLO, main.procesar_archivo(CSV_EJEMPLO, "€"))]
     assert main.comparar_con_anterior(resultados, tmp_path / "historial.csv", 20) is None
     assert (tmp_path / "historial.csv").exists()
+    assert (tmp_path / "historial_productos.csv").exists()
+
+
+def test_comparar_productos():
+    anterior = pd.Series({"Portátil": 1000.0, "Monitor": 400.0, "Ratón": 100.0, "Cable": 5.0})
+    actual = pd.Series({"Portátil": 950.0, "Monitor": 100.0, "Cable": 1.0, "Nuevo": 900.0})
+    cambios = alertas.comparar_productos(actual, anterior, umbral=50, maximo=3)
+    # Ratón desaparece (-100 %), Monitor -75 %, Portátil -5 % no avisa.
+    # Cable no está entre los 3 que más vendían y Nuevo no vendía antes: no se vigilan.
+    assert [(c["producto"], c["cambio"]) for c in cambios] == [("Ratón", -100.0), ("Monitor", -75.0)]
+
+
+def test_historial_de_productos_lee_solo_la_ultima_ejecucion(tmp_path, monkeypatch):
+    ruta = tmp_path / "historial_productos.csv"
+    assert alertas.leer_productos_anteriores(ruta) is None
+    alertas.guardar_productos(ruta, pd.Series({"A": 10.0, "B": 20.0}))
+    # La fecha lleva segundos: se fija a mano para que las dos ejecuciones no coincidan.
+    historial = pd.read_csv(ruta)
+    historial["fecha"] = "2026-10-19 08:00:00"
+    historial.to_csv(ruta, index=False)
+    alertas.guardar_productos(ruta, pd.Series({"A": 30.0}))
+    assert alertas.leer_productos_anteriores(ruta).to_dict() == {"A": 30.0}
+
+
+def test_email_avisa_de_productos(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "CARPETA_RESULTADOS", tmp_path)
+    monkeypatch.setattr(enviar_email, "leer_configuracion", lambda: CONFIG)
+    monkeypatch.setattr(enviar_email.smtplib, "SMTP", ServidorFalso)
+    ServidorFalso.enviados.clear()
+
+    # La semana anterior: mismas ventas en total, pero el Teclado vendía 500 € y ahora 51 €.
+    historial = tmp_path / "historial.csv"
+    alertas.guardar_ejecucion(historial, {**SEMANA_1, "ventas_totales": 1375.99, "pedidos": 8})
+    alertas.guardar_productos(alertas.ruta_historial_productos(historial),
+                              pd.Series({"Portátil": 899.99, "Teclado": 500.0}))
+    resultados = [(CSV_EJEMPLO, main.procesar_archivo(CSV_EJEMPLO, "€"))]
+    comparacion = main.comparar_con_anterior(resultados, historial, umbral=20, umbral_producto=50)
+    assert [p["producto"] for p in comparacion["productos"]] == ["Teclado"]
+    main.enviar_por_email(resultados, "€", comparacion)
+
+    _, mensaje = ServidorFalso.enviados[0]
+    assert mensaje["Subject"].endswith("· ⚠ 1 producto")
+    cuerpo = mensaje.get_body(preferencelist=("html",)).get_content()
+    assert "Productos con cambio brusco" in cuerpo and "Teclado" in cuerpo

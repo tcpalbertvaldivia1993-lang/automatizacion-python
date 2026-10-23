@@ -3,6 +3,9 @@
 Cada ejecución guarda sus totales en un historial (un CSV con una fila por
 ejecución). La siguiente vez se comparan los totales nuevos con la última fila:
 si las ventas o los pedidos suben o bajan más que el umbral, es un cambio brusco.
+
+Además se guardan las ventas de cada producto en otro historial, para avisar si
+alguno de los que más venden cambia bruscamente aunque el total se mantenga.
 """
 
 from datetime import datetime
@@ -12,6 +15,12 @@ import pandas as pd
 UMBRAL_POR_DEFECTO = 20  # en %
 # Indicadores que se vigilan y el nombre con el que aparecen en el aviso.
 VIGILADOS = {"ventas_totales": "Ventas netas", "pedidos": "Pedidos"}
+
+# Cada producto por separado varía mucho más que el total, así que su umbral es mayor.
+UMBRAL_PRODUCTO_POR_DEFECTO = 50  # en %
+# Solo se vigilan los que más vendieron la vez anterior: que un producto pase
+# de vender 10 € a 3 € no merece un aviso.
+MAX_PRODUCTOS_VIGILADOS = 10
 
 
 def sumar_indicadores(lista_indicadores):
@@ -78,3 +87,50 @@ def comparar(actual, anterior, umbral=UMBRAL_POR_DEFECTO):
             "brusco": cambio is not None and abs(cambio) >= umbral,
         })
     return cambios
+
+
+def ruta_historial_productos(ruta_historial):
+    """El historial por producto va junto al de totales: historial.csv -> historial_productos.csv."""
+    return ruta_historial.with_name(f"{ruta_historial.stem}_productos.csv")
+
+
+def guardar_productos(ruta, ventas_por_producto):
+    """Añade al historial por producto una fila por cada producto de esta ejecución."""
+    filas = pd.DataFrame({
+        # Con segundos, para distinguir dos ejecuciones seguidas al leer la última.
+        "fecha": f"{datetime.now():%Y-%m-%d %H:%M:%S}",
+        "producto": ventas_por_producto.index,
+        "ventas": ventas_por_producto.round(2).values,
+    })
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    filas.to_csv(ruta, mode="a", header=not ruta.exists(), index=False)
+
+
+def leer_productos_anteriores(ruta):
+    """Devuelve las ventas por producto de la última ejecución guardada, o None si no hay."""
+    if not ruta.exists():
+        return None
+    historial = pd.read_csv(ruta, dtype={"producto": str})
+    if historial.empty:
+        return None
+    ultima = historial[historial["fecha"] == historial["fecha"].iloc[-1]]
+    return ultima.set_index("producto")["ventas"]
+
+
+def comparar_productos(actual, anterior, umbral=UMBRAL_PRODUCTO_POR_DEFECTO,
+                       maximo=MAX_PRODUCTOS_VIGILADOS):
+    """Busca cambios bruscos en los productos que más vendieron la vez anterior.
+
+    actual y anterior son las ventas por producto (Series con el producto como índice).
+    Un producto que ya no aparece cuenta como 0 (-100 %). Devuelve solo los cambios
+    bruscos, de la bajada más fuerte a la subida más fuerte.
+    """
+    vigilados = anterior[anterior > 0].nlargest(maximo)
+    cambios = []
+    for producto, antes in vigilados.items():
+        ahora = float(actual.get(producto, 0.0))
+        cambio = 100 * (ahora - antes) / antes
+        if abs(cambio) >= umbral:
+            cambios.append({"producto": producto, "anterior": float(antes),
+                            "actual": ahora, "cambio": cambio})
+    return sorted(cambios, key=lambda c: c["cambio"])

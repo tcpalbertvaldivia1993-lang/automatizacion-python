@@ -34,6 +34,7 @@ Puede procesar una carpeta entera, ejecutarse sola cada semana y enviar los info
    - `resumen.html`: al procesar una carpeta, una tabla que compara todos los archivos.
    - `registro.log`: registro de todas las ejecuciones.
    - `historial.csv`: totales de cada ejecución programada, para detectar cambios bruscos.
+   - `historial_productos.csv`: ventas de cada producto en cada ejecución programada.
    - `evolucion.png`: gráfico de las ventas netas semana a semana.
 
 ## Estructura
@@ -153,6 +154,14 @@ venv/bin/python main.py datos/entrada --historial resultados/historial.csv --umb
 - El registro muestra un aviso: `Cambio brusco en ventas netas: -31.2 %`.
 - Con `--enviar-email`, el email incluye un recuadro con la comparación (en rojo si
   hay un cambio brusco) y el asunto lo avisa: `Informe de ventas · 23/10/2026 · ⚠ Ventas netas -31 %`.
+
+**Por producto:** también se guardan las ventas de cada producto en
+`historial_productos.csv` (junto a `historial.csv`). Se vigilan los 10 productos que más
+vendieron la vez anterior, y se avisa si alguno sube o baja un 50 % o más (cada producto
+varía mucho más que el total, por eso el umbral es mayor; se cambia con `--umbral-producto`).
+Un producto que deja de venderse cuenta como -100 %. Así se detecta, por ejemplo, que el
+producto estrella cayó aunque el total se mantenga porque otros subieron. El email los
+muestra en el recuadro de aviso, y el asunto lo indica: `· ⚠ 2 productos`.
 
 Desde la segunda ejecución se dibuja además `resultados/evolucion.png`: un gráfico con
 las ventas netas de las últimas 12 ejecuciones (semanas), con en rojo y su % las que
