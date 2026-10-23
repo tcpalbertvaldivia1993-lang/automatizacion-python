@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Sales report · {{ file_name }}{% endblock %}
+{% block content %}
+<h1>Sales report</h1>
+<p class="meta">File analyzed: <code>{{ file }}</code> · Run date: {{ run_date }}</p>
+
+<div class="metrics">
+  <div class="metric">
+    <div class="label">Net sales</div>
+    <div class="value">{{ metrics.net_sales | number }} {{ currency }}</div>
+  </div>
+  <div class="metric">
+    <div class="label">Returns and cancellations</div>
+    <div class="value">{{ metrics.returns | number }} {{ currency }}</div>
+    <div class="note">Already subtracted from sales</div>
+  </div>
+  <div class="metric">
+    <div class="label">Orders</div>
+    <div class="value">{{ metrics.orders | number(0) }}</div>
+  </div>
+  <div class="metric">
+    <div class="label">Average order value</div>
+    <div class="value">{{ metrics.avg_order_value | number }} {{ currency }}</div>
+  </div>
+</div>
+
+{% for chart in charts %}
+<section>
+  <h2>{{ chart.title }} ({{ currency }})</h2>
+  <img src="{{ chart.image }}" alt="Chart: {{ chart.title }}">
+  <details>
+    <summary>Show the chart data</summary>
+    <div class="wide-table">
+      <table>
+        <thead><tr><th>{{ chart.header }}</th><th class="num">Sales ({{ currency }})</th></tr></thead>
+        <tbody>
+        {% for label, value in chart.rows %}
+          <tr><td>{{ label }}</td><td class="num">{{ value | number }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+{% endfor %}
+
+<section>
+  <h2>Data quality</h2>
+  {% if quality.discarded %}
+  <p class="warning"><strong>{{ quality.discarded | number(0) }}</strong> of
+    {{ quality.original | number(0) }} rows were discarded ({{ quality.discarded_percent | number(1) }}%).
+    The details of each one are in <code>discarded_rows.csv</code>, next to this report.</p>
+  {% endif %}
+  <div class="wide-table">
+    <table>
+      <tbody>
+        <tr><td>Original rows</td><td class="num">{{ quality.original | number(0) }}</td></tr>
+        <tr><td>Valid rows</td><td class="num">{{ quality.valid | number(0) }}</td></tr>
+        <tr><td>Discarded rows</td><td class="num">{{ quality.discarded | number(0) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% if quality.reasons %}
+  <h2 style="margin-top: 20px">Reasons for discarding</h2>
+  <div class="wide-table">
+    <table>
+      <thead><tr><th>Reason</th><th class="num">Rows</th></tr></thead>
+      <tbody>
+      {% for reason, rows in quality.reasons %}
+        <tr><td>{{ reason }}</td><td class="num">{{ rows | number(0) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,28 +1,28 @@
-# Ejecuta las pruebas automáticamente en GitHub cada vez que se suben cambios.
-name: Pruebas
+# Runs the tests automatically on GitHub every time changes are pushed.
+name: Tests
 
 on:
   push:
   pull_request:
 
 jobs:
-  pruebas:
+  tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar el código
+      - name: Get the code
         uses: actions/checkout@v5
 
-      - name: Instalar Python
+      - name: Install Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
           cache: pip
 
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Ejecutar las pruebas
+      - name: Run the tests
         run: python -m pytest -v
 
-      - name: Ejecutar la herramienta con el CSV de ejemplo
+      - name: Run the tool with the sample CSV
         run: python main.py

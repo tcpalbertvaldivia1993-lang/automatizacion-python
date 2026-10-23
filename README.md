@@ -1,263 +1,265 @@
-# Automatización de limpieza de datos de ventas
+# Sales data cleaning automation
 
-[![Pruebas](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/pruebas.yml/badge.svg)](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/pruebas.yml)
+[![Tests](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/tests.yml/badge.svg)](https://github.com/tcpalbertvaldivia1993-lang/automatizacion-python/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/python-3.14-blue)
 
-Herramienta en Python que hace el trabajo semanal de un analista de datos sin que nadie
-la toque: recibe archivos de ventas (CSV o Excel), **limpia los datos y explica cada
-error**, calcula los indicadores, genera un **informe HTML con gráficos** y lo **envía
-por email** cada lunes, **avisando si las ventas cambian bruscamente**.
+A Python tool that does a data analyst's weekly work with nobody touching it: it takes
+sales files (CSV or Excel), **cleans the data and explains every error**, calculates the
+metrics, builds an **HTML report with charts** and **emails it** every Monday,
+**alerting if sales change sharply**.
 
-Probada con **541.909 ventas reales** de una tienda online
+Tested with **541,909 real sales** from an online shop
 ([Online Retail, UCI](https://archive.ics.uci.edu/dataset/352/online+retail)).
 
-| Informe (un año de datos reales) | Email de los lunes (12 semanas reales) |
+| Report (one year of real data) | Monday email (12 real weeks) |
 |---|---|
-| [![Informe de ventas](docs/capturas/informe.png)](docs/capturas/informe.png) | [![Email semanal](docs/capturas/email.png)](docs/capturas/email.png) |
+| [![Sales report](docs/screenshots/report.png)](docs/screenshots/report.png) | [![Weekly email](docs/screenshots/email.png)](docs/screenshots/email.png) |
 
-## En resumen
+## At a glance
 
-- **Limpieza de datos con pandas:** duplicados, espacios, fechas imposibles o futuras,
-  cantidades y precios inválidos. Cada fila descartada se guarda con su motivo, y los
-  formatos recuperables (`7,50`, `899.99 €`) se corrigen en vez de eliminarse.
-- **Reglas de negocio:** las devoluciones y cancelaciones se restan de las ventas, los
-  gastos de envío y comisiones no cuentan como productos, y los meses incompletos se
-  marcan para que no parezcan una caída.
-- **Informes:** HTML de un solo archivo (Jinja2 + matplotlib), adaptado al móvil y con
-  números en formato español.
-- **Automatización:** procesa carpetas enteras, se ejecuta sola cada semana con el
-  Programador de tareas de Windows y envía el resultado por email (SMTP).
-- **Detección de anomalías:** compara cada semana con la media de las 4 anteriores.
-- **Calidad:** 40 pruebas con pytest que se ejecutan en GitHub Actions con cada cambio.
+- **Data cleaning with pandas:** duplicates, extra spaces, impossible or future dates,
+  invalid quantities and prices. Every discarded row is saved with its reason, and
+  recoverable formats (`7,50`, `£899.99`) are fixed instead of removed.
+- **Business rules:** returns and cancellations are subtracted from sales, shipping
+  costs and fees don't count as products, and incomplete months are marked so they
+  don't look like a drop.
+- **Reports:** single-file HTML (Jinja2 + matplotlib), mobile-friendly.
+- **Automation:** processes whole folders, runs by itself every week with the Windows
+  Task Scheduler and sends the result by email (SMTP).
+- **Anomaly detection:** compares each week with the average of the previous 4.
+- **Quality:** 40 pytest tests that run on GitHub Actions with every change.
 
-**Tecnologías:** Python · pandas · matplotlib · Jinja2 · openpyxl · pytest ·
-GitHub Actions · Jupyter · SMTP · Programador de tareas de Windows + WSL
+**Tech:** Python · pandas · matplotlib · Jinja2 · openpyxl · pytest ·
+GitHub Actions · Jupyter · SMTP · Windows Task Scheduler + WSL
 
-## Cómo funciona
+## How it works
 
 ```mermaid
 flowchart LR
-    A[CSV / Excel<br>en datos/entrada/] --> B[Limpieza<br>limpieza.py]
-    B --> C[ventas_limpio.csv]
-    B --> D[filas_descartadas.csv<br>con el motivo]
-    C --> E[Indicadores<br>y gráficos]
-    E --> F[informe.html]
-    E --> G[historial.csv]
-    G --> H[Comparar con la media<br>de 4 semanas<br>alertas.py]
-    F --> I[Email semanal]
+    A[CSV / Excel<br>in data/input/] --> B[Cleaning<br>cleaning.py]
+    B --> C[clean_sales.csv]
+    B --> D[discarded_rows.csv<br>with the reason]
+    C --> E[Metrics<br>and charts]
+    E --> F[report.html]
+    E --> G[history.csv]
+    G --> H[Compare with the<br>4-week average<br>alerts.py]
+    F --> I[Weekly email]
     H --> I
-    T([Programador de tareas<br>lunes 08:00]) -.-> A
+    T([Task Scheduler<br>Monday 08:00]) -.-> A
 ```
 
-## Resultados con datos reales
+## Results with real data
 
-Con el conjunto Online Retail completo (un año, tienda británica, importes en £):
+With the full Online Retail dataset (one year, UK shop, amounts in £):
 
 | | |
 |---|---|
-| Filas procesadas | 538.997 |
-| Filas válidas | 531.134 (se descartan 5.367 duplicadas y 2.496 con precio inválido) |
-| Ventas netas | 9.771.386,86 £ |
-| Devoluciones y cancelaciones | 475.870,26 £ (ya restadas) |
-| Pedidos | 19.773 · valor medio 494,18 £ |
-| Tiempo | ~25 segundos |
+| Rows processed | 538,997 |
+| Valid rows | 531,134 (5,367 duplicates and 2,496 with an invalid price are discarded) |
+| Net sales | £9,771,386.86 |
+| Returns and cancellations | £475,870.26 (already subtracted) |
+| Orders | 19,773 · average £494.18 |
+| Time | ~25 seconds |
 
-## Problemas encontrados y decisiones
+## Problems found and decisions
 
-Los datos de ejemplo funcionaban desde el principio, pero los datos reales sacaron a la
-luz problemas que no se ven con un CSV pequeño:
+The sample data worked from the start, but the real data brought to light problems you
+don't see with a small CSV:
 
-- **Las fechas llevaban hora** (`2010-12-01 08:26:00`) y la validación las rechazaba
-  todas. Ahora se aceptan con o sin hora y se guardan solo con el día.
-- **Los gastos de envío y comisiones aparecían como "productos"**: el más vendido era
-  "DOTCOM POSTAGE" (206.245 £ de gastos de envío). Se identifican por su código y se
-  apartan antes de analizar.
-- **Las cancelaciones se ignoraban** mientras los pedidos originales seguían contando,
-  así que las ventas salían infladas. Ahora una cantidad negativa se resta.
-- **El último mes parecía una caída de ventas**, pero solo tenía 9 días de datos. Ahora
-  los meses incompletos se marcan con `*` y un color más claro.
-- **Los gráficos eran ilegibles** con 4.000 productos o 365 días: se muestran los 10
-  productos que más venden y, si hay más de dos meses, las ventas por mes.
-- **Los avisos saltaban casi todas las semanas.** Al simular 12 lunes con datos reales,
-  comparar cada semana solo con la anterior daba aviso en 8 de 11 semanas: en esta
-  tienda las ventas varían ±30 % de forma normal. Comparando con la **media de las 4
-  semanas anteriores** y un umbral del 30 %, el aviso salta en 3 de 11 semanas, dos de
-  ellas por la subida real de la campaña de Navidad. Por producto la variación es
-  todavía mayor (un solo pedido grande la cambia), así que los productos se muestran
-  como información y no como aviso.
+- **Dates had a time** (`2010-12-01 08:26:00`) and the validation rejected all of them.
+  Now they're accepted with or without a time and stored as just the day.
+- **Shipping costs and fees showed up as "products"**: the best seller was
+  "DOTCOM POSTAGE" (£206,245 of shipping costs). They're identified by their code and
+  set aside before the analysis.
+- **Cancellations were ignored** while the original orders still counted, so sales came
+  out inflated. Now a negative quantity is subtracted.
+- **The last month looked like a drop in sales**, but it only had 9 days of data. Now
+  incomplete months are marked with `*` and a lighter color.
+- **The charts were unreadable** with 4,000 products or 365 days: they show the 10
+  best-selling products and, if there are more than two months, sales by month.
+- **The alerts went off almost every week.** Simulating 12 Mondays with real data,
+  comparing each week only with the previous one (20% threshold) raised an alert in 8 of
+  11 weeks: in this shop sales normally swing ±30%. Comparing with the **average of the
+  previous 4 weeks** and a 30% threshold, the alert goes off in 3 of 11 weeks, two of
+  them because of the real rise of the Christmas season. Per product the variation is
+  even larger (a single large order changes it), so products are shown as information
+  and not as an alert.
+
+| Products before and after cleaning | Alerts before and after the change |
+|---|---|
+| [![Products before and after cleaning](docs/screenshots/products_before_after.png)](docs/screenshots/products_before_after.png) | [![Alerts before and after](docs/screenshots/alerts_before_after.png)](docs/screenshots/alerts_before_after.png) |
 
 ---
 
-## Qué hace, en detalle
+## What it does, in detail
 
-1. **Limpieza**
-   - Quita espacios innecesarios (al principio, al final y dobles espacios).
-   - Elimina filas duplicadas.
-   - Elimina fechas vacías, con formato distinto de `AAAA-MM-DD`, imposibles
-     (`2026-13-45`, `2026-02-30`) o futuras.
-   - Elimina cantidades vacías, no numéricas, decimales o 0.
-     Una cantidad **negativa** es una devolución o cancelación: no se elimina,
-     se resta de las ventas y no cuenta como pedido.
-   - Elimina precios vacíos, mal escritos (`abc`) o ≤ 0.
-     Los formatos recuperables como `7,50` o `899.99 €` se corrigen en lugar de eliminarse.
-2. **Indicadores**: ventas totales netas, devoluciones y cancelaciones,
-   número de pedidos y valor medio por pedido.
-   Además, gráficos de **ventas por producto** (los 10 que más venden si hay
-   muchos) y **ventas por día** (por mes si los datos abarcan más de dos meses).
-   Los periodos sin ventas aparecen con 0, y el primer o último mes con datos
-   incompletos se marca con `*` y un color más claro. Cada gráfico lleva su tabla de datos.
-3. **Resultados** (carpeta `resultados/`, con una subcarpeta por archivo):
-   - `<archivo>/ventas_limpio.csv`: datos limpios, con la columna `importe`.
-   - `<archivo>/filas_descartadas.csv`: cada fila eliminada con su motivo.
-   - `<archivo>/informe.html`: informe con indicadores, gráficos y calidad de los datos.
-     Es un solo archivo (los gráficos van dentro): se abre con doble clic en cualquier
-     navegador, se puede enviar por email y se adapta al móvil. Números en formato español.
-   - `<archivo>/graficos/`: los gráficos en PNG.
-   - `resumen.html`: al procesar una carpeta, una tabla que compara todos los archivos.
-   - `registro.log`: registro de todas las ejecuciones.
-   - `historial.csv`: totales de cada ejecución programada, para detectar cambios bruscos.
-   - `historial_productos.csv`: ventas de cada producto en cada ejecución programada.
-   - `evolucion.png`: gráfico de las ventas netas semana a semana.
+1. **Cleaning**
+   - Removes unnecessary spaces (leading, trailing and double spaces).
+   - Removes duplicate rows.
+   - Removes dates that are empty, in a format other than `YYYY-MM-DD`, impossible
+     (`2026-13-45`, `2026-02-30`) or in the future.
+   - Removes quantities that are empty, non-numeric, decimal or 0.
+     A **negative** quantity is a return or cancellation: it isn't removed,
+     it's subtracted from sales and doesn't count as an order.
+   - Removes prices that are empty, malformed (`abc`) or ≤ 0.
+     Recoverable formats such as `7,50` or `£899.99` are fixed instead of removed.
+2. **Metrics**: net sales, returns and cancellations, number of orders and average
+   order value. Plus charts of **sales by product** (the top 10 if there are many) and
+   **sales by day** (by month if the data covers more than two months). Periods without
+   sales show as 0, and a first or last month with incomplete data is marked with `*`
+   and a lighter color. Each chart comes with its data table.
+3. **Results** (`results/` folder, with one subfolder per file):
+   - `<file>/clean_sales.csv`: clean data, with the `amount` column.
+   - `<file>/discarded_rows.csv`: each removed row with its reason.
+   - `<file>/report.html`: report with metrics, charts and data quality.
+     It's a single file (the charts are inside): it opens with a double click in any
+     browser, can be sent by email and adapts to mobile.
+   - `<file>/charts/`: the charts as PNG.
+   - `summary.html`: when processing a folder, a table that compares all the files.
+   - `run.log`: log of every run.
+   - `history.csv`: totals of each scheduled run, to detect sharp changes.
+   - `history_products.csv`: sales of each product in each scheduled run.
+   - `trend.png`: chart of the net sales week by week.
 
-## Estructura
+## Structure
 
 ```
-datos/ventas_ejemplo.csv        CSV de ejemplo con errores a propósito
-limpieza.py                     funciones de limpieza e indicadores
-graficos.py                     gráficos del informe (matplotlib)
-plantillas/                     diseño HTML de los informes y del email (Jinja2)
-formato.py                      números en formato español: 1.234,56
-enviar_email.py                 envío de los informes por email (SMTP)
-alertas.py                      historial de ejecuciones y aviso de cambios bruscos
-.env.ejemplo                    plantilla de la configuración del email
-preparar_online_retail.py       descarga y adapta un conjunto de datos real
-main.py                         ejecución automática (un archivo o una carpeta)
-ejecutar_programado.sh          lo que ejecuta la tarea programada: procesa datos/entrada/
-programar_windows.ps1           crea la tarea en el Programador de tareas de Windows
-datos/entrada/                  carpeta de entrada para la ejecución programada
-notebooks/analisis_ventas.ipynb el mismo proceso paso a paso
-tests/                          pruebas con pytest
-docs/capturas/                  capturas de este README
-.github/workflows/pruebas.yml   ejecuta las pruebas en GitHub con cada push
+data/sample_sales.csv            sample CSV with errors on purpose
+cleaning.py                      cleaning functions and metrics
+charts.py                        report charts (matplotlib)
+templates/                       HTML design of the reports and the email (Jinja2)
+formatting.py                    number format: 1,234.56
+send_email.py                    sending the reports by email (SMTP)
+alerts.py                        run history and sharp change alerts
+.env.example                     template for the email settings
+prepare_online_retail.py         downloads and adapts a real dataset
+main.py                          automatic run (one file or a folder)
+run_scheduled.sh                 what the scheduled task runs: processes data/input/
+schedule_windows.ps1             creates the task in the Windows Task Scheduler
+data/input/                      input folder for the scheduled run
+notebooks/sales_analysis.ipynb   the same process step by step
+tests/                           pytest tests
+docs/screenshots/                screenshots for this README
+.github/workflows/tests.yml      runs the tests on GitHub with every push
 ```
 
-## Cómo usarlo
+## How to use it
 
 ```bash
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 
-venv/bin/python main.py                        # usa el CSV de ejemplo
-venv/bin/python main.py ruta/a/mis_ventas.csv  # un CSV
-venv/bin/python main.py ruta/a/mis_ventas.xlsx # un Excel
-venv/bin/python main.py ruta/a/carpeta/        # todos los CSV y Excel de una carpeta
-venv/bin/python main.py ventas.csv --moneda £   # otra moneda en el informe
-venv/bin/python main.py --enviar-email          # enviar los informes por email
+venv/bin/python main.py                         # uses the sample CSV
+venv/bin/python main.py path/to/my_sales.csv    # a CSV
+venv/bin/python main.py path/to/my_sales.xlsx   # an Excel file
+venv/bin/python main.py path/to/folder/         # every CSV and Excel in a folder
+venv/bin/python main.py sales.csv --currency £  # another currency in the report
+venv/bin/python main.py --send-email            # send the reports by email
 
-venv/bin/jupyter notebook notebooks/          # abrir el notebook
-venv/bin/python -m pytest                     # ejecutar las pruebas
+venv/bin/jupyter notebook notebooks/            # open the notebook
+venv/bin/python -m pytest                       # run the tests
 ```
 
-El archivo debe tener las columnas:
-`id_pedido, fecha, cliente, producto, cantidad, precio_unitario`.
-Las fechas pueden ir con o sin hora (`2026-09-01` o `2026-09-01 08:26:00`).
+The file must have the columns:
+`order_id, date, customer, product, quantity, unit_price`.
+Dates can have a time or not (`2026-09-01` or `2026-09-01 08:26:00`).
 
-## Probarlo con datos reales
+## Trying it with real data
 
-`preparar_online_retail.py` descarga el conjunto de datos público
+`prepare_online_retail.py` downloads the public dataset
 [Online Retail (UCI)](https://archive.ics.uci.edu/dataset/352/online+retail):
-541.909 ventas reales de una tienda online británica (2010-2011). Después:
+541,909 real sales from a UK online shop (2010-2011). Then it:
 
-- Aparta las 2.912 filas que no son productos (envíos, comisiones y ajustes,
-  identificados por su código) en `datos/reales/online_retail_excluidas.csv`.
-- Cambia los nombres de las columnas a los que espera la herramienta.
+- Sets aside the 2,912 rows that aren't products (shipping, fees and adjustments,
+  identified by their code) in `data/real/online_retail_excluded.csv`.
+- Renames the columns to the ones the tool expects.
 
-Las cancelaciones de este conjunto (pedidos que empiezan por `C`) tienen cantidad
-negativa, así que la herramienta las resta de las ventas automáticamente.
-Los importes están en libras, así que conviene usar `--moneda £`.
-
-```bash
-venv/bin/python preparar_online_retail.py              # ~2 min, solo la primera vez
-venv/bin/python main.py datos/reales/online_retail.csv --moneda £ # ~25 s
-```
-
-Los datos reales se guardan en `datos/reales/`, que no se sube a GitHub.
-
-## Ejecución programada
-
-Deja los archivos de ventas en `datos/entrada/`. Cada lunes a las 08:00, el
-**Programador de tareas de Windows** abre WSL y ejecuta `ejecutar_programado.sh`, que:
-
-1. procesa todos los CSV y Excel de `datos/entrada/`,
-2. genera sus informes y `resultados/resumen.html`,
-3. mueve los que salieron bien a `datos/entrada/procesados/` (los que fallan se quedan,
-   para revisarlos con `resultados/registro.log`),
-4. compara los totales con la media de las 4 semanas anteriores (`resultados/historial.csv`),
-5. envía un email con los indicadores de cada archivo, sus informes HTML adjuntos,
-   el gráfico de evolución y un aviso si las ventas o los pedidos cambiaron bruscamente.
-
-Si el PC estaba apagado el lunes a las 08:00, la tarea se ejecuta en cuanto se enciende.
-Se usa el Programador de tareas y no `cron` porque `cron` solo funciona con WSL abierto.
-
-Para crear la tarea (una sola vez, desde WSL):
+Cancellations in this dataset (orders starting with `C`) have a negative quantity,
+so the tool subtracts them from sales automatically.
+The amounts are in pounds, so `--currency £` is a good idea.
 
 ```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w programar_windows.ps1)"
+venv/bin/python prepare_online_retail.py                          # ~2 min, only the first time
+venv/bin/python main.py data/real/online_retail.csv --currency £  # ~25 s
 ```
 
-Para verla o cambiarla: menú Inicio → "Programador de tareas" →
-"automatizacion-python - informe semanal".
+The real data is saved in `data/real/`, which isn't uploaded to GitHub.
 
-## Envío por email
+## Scheduled run
 
-1. Copia la plantilla de configuración: `cp .env.ejemplo .env`
-2. Rellena `.env` con el servidor, tu cuenta, la contraseña y el destinatario.
-   Con Gmail hace falta una **contraseña de aplicación**
-   ([cómo crearla](https://myaccount.google.com/apppasswords)), no tu contraseña normal.
-3. Pruébalo: `venv/bin/python main.py --enviar-email`
+Drop the sales files in `data/input/`. Every Monday at 08:00, the
+**Windows Task Scheduler** opens WSL and runs `run_scheduled.sh`, which:
 
-El email lleva en el cuerpo los indicadores de cada archivo (y avisa si alguno falló), y
-los informes completos como adjuntos HTML. Los gráficos de los informes van en los
-adjuntos porque Gmail bloquea las imágenes en base64; el gráfico de evolución sí va en
-el cuerpo, como imagen incrustada con `cid:`, que Gmail muestra.
+1. processes every CSV and Excel file in `data/input/`,
+2. generates their reports and `results/summary.html`,
+3. moves the successful ones to `data/input/processed/` (the failed ones stay,
+   to review them with `results/run.log`),
+4. compares the totals with the average of the previous 4 weeks (`results/history.csv`),
+5. sends an email with the metrics of each file, their HTML reports attached,
+   the trend chart and an alert if sales or orders changed sharply.
 
-`.env` contiene tu contraseña: está en `.gitignore` y **nunca** se sube a GitHub.
+If the PC was off on Monday at 08:00, the task runs as soon as it's turned on.
+The Task Scheduler is used instead of `cron` because `cron` only works while WSL is open.
 
-## Aviso de cambios bruscos
-
-Con `--historial`, cada ejecución guarda sus totales (ventas netas, devoluciones,
-pedidos y valor medio) en una fila de un CSV. La siguiente ejecución los compara con
-la **media de las 4 ejecuciones anteriores** (o de las que haya, al principio): si las
-**ventas netas** o los **pedidos** suben o bajan un 30 % o más, es un cambio brusco.
+To create the task (only once, from WSL):
 
 ```bash
-venv/bin/python main.py datos/entrada --historial resultados/historial.csv
-venv/bin/python main.py datos/entrada --historial resultados/historial.csv --umbral 40
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w schedule_windows.ps1)"
 ```
 
-- El registro muestra un aviso: `Cambio brusco en ventas netas: -31.2 %`.
-- Con `--enviar-email`, el email incluye un recuadro con la comparación (en rojo si
-  hay un cambio brusco) y el asunto lo avisa: `Informe de ventas · 23/10/2026 · ⚠ Ventas netas -31 %`.
+To see or change it: Start menu → "Task Scheduler" →
+"automatizacion-python - weekly report".
 
-Se compara con la media y no solo con la semana anterior porque las ventas varían mucho
-de una semana a otra (ver [Problemas encontrados y decisiones](#problemas-encontrados-y-decisiones)).
+## Sending by email
 
-**Productos que más cambiaron:** también se guardan las ventas de cada producto en
-`historial_productos.csv` (junto a `historial.csv`). De los 10 productos que más venden
-de media, el email muestra hasta 5 que hayan cambiado un 50 % o más (se cambia con
-`--umbral-producto`). Es solo informativo, sin aviso en rojo ni en el asunto: un solo
-pedido grande ya cambia mucho las ventas de un producto.
+1. Copy the settings template: `cp .env.example .env`
+2. Fill in `.env` with the server, your account, the password and the recipient.
+   With Gmail you need an **app password**
+   ([how to create it](https://myaccount.google.com/apppasswords)), not your normal password.
+3. Try it: `venv/bin/python main.py --send-email`
 
-Desde la segunda ejecución se dibuja además `resultados/evolucion.png`: un gráfico con
-las ventas netas de las últimas 12 ejecuciones (semanas), con en rojo y su % las que
-cambiaron bruscamente. Va dentro del cuerpo del email y en `resumen.html`.
+The email body has the metrics of each file (and warns if one failed), and the full
+reports go as HTML attachments. The report charts are in the attachments because Gmail
+blocks base64 images; the trend chart does go in the body, as an image embedded with
+`cid:`, which Gmail shows.
 
-La ejecución programada ya usa `resultados/historial.csv`. Las ejecuciones a mano sin
-`--historial` no se guardan, para que las pruebas no estropeen la comparación. La
-primera vez no hay nada con qué comparar.
+`.env` contains your password: it's in `.gitignore` and is **never** uploaded to GitHub.
 
-## Datos
+## Sharp change alerts
 
-El conjunto Online Retail es de Daqing Chen (2015), publicado en el
+With `--history`, each run saves its totals (net sales, returns, orders and average
+order value) in a row of a CSV. The next run compares them with the **average of the
+previous 4 runs** (or of the ones available, at the start): if **net sales** or
+**orders** go up or down by 30% or more, it's a sharp change.
+
+```bash
+venv/bin/python main.py data/input --history results/history.csv
+venv/bin/python main.py data/input --history results/history.csv --threshold 40
+```
+
+- The log shows a warning: `Sharp change in net sales: -31.2%`.
+- With `--send-email`, the email includes a box with the comparison (red if there's a
+  sharp change) and the subject warns about it: `Sales report · 23/10/2026 · ⚠ Net sales -31%`.
+
+The comparison is with the average and not just the previous week because sales vary a
+lot from one week to the next (see [Problems found and decisions](#problems-found-and-decisions)).
+
+**Products that changed the most:** the sales of each product are also saved in
+`history_products.csv` (next to `history.csv`). Among the 10 best-selling products on
+average, the email shows up to 5 that changed by 50% or more (change it with
+`--product-threshold`). It's information only, with no red alert and nothing in the
+subject: a single large order already changes a product's sales a lot.
+
+From the second run on, `results/trend.png` is also drawn: a chart with the net sales of
+the last 12 runs (weeks), with the ones that changed sharply in red with their %. It goes
+in the email body and in `summary.html`.
+
+The scheduled run already uses `results/history.csv`. Manual runs without `--history`
+aren't saved, so tests don't spoil the comparison. The first time there's nothing to
+compare with.
+
+## Data
+
+The Online Retail dataset is by Daqing Chen (2015), published in the
 [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/352/online+retail)
-con licencia CC BY 4.0.
+under the CC BY 4.0 license.

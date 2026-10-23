@@ -2,8 +2,8 @@ venv/
 __pycache__/
 .ipynb_checkpoints/
 .pytest_cache/
-resultados/
-datos/reales/
-datos/entrada/*
-!datos/entrada/.gitkeep
+results/
+data/real/
+data/input/*
+!data/input/.gitkeep
 .env

@@ -1,34 +1,34 @@
-"""Herramienta de automatización: limpia archivos de ventas y genera informes.
+"""Automation tool: cleans sales files and generates reports.
 
-Uso:
-    venv/bin/python main.py                              # usa datos/ventas_ejemplo.csv
-    venv/bin/python main.py ruta/a/mis_ventas.csv        # un archivo CSV
-    venv/bin/python main.py ruta/a/mis_ventas.xlsx       # un archivo Excel
-    venv/bin/python main.py ruta/a/carpeta/              # todos los CSV y Excel de la carpeta
-    venv/bin/python main.py datos/reales/online_retail.csv --moneda £
+Usage:
+    venv/bin/python main.py                              # uses data/sample_sales.csv
+    venv/bin/python main.py path/to/my_sales.csv         # a CSV file
+    venv/bin/python main.py path/to/my_sales.xlsx        # an Excel file
+    venv/bin/python main.py path/to/folder/              # every CSV and Excel in the folder
+    venv/bin/python main.py data/real/online_retail.csv --currency £
 
-Opciones:
-    --moneda SÍMBOLO      símbolo de la moneda en el informe (por defecto €)
-    --mover-procesados    al terminar, mueve cada archivo procesado sin errores a
-                          una subcarpeta "procesados/" junto a él (útil al programarlo)
-    --enviar-email        envía los informes por email (configuración en .env,
-                          ver .env.ejemplo)
-    --historial RUTA      guarda los totales de cada ejecución en ese CSV y avisa
-                          si las ventas o los pedidos cambian bruscamente
-                          respecto a la media de las 4 ejecuciones anteriores
-    --umbral PORCENTAJE   cuánto tiene que cambiar para avisar (por defecto 30 %)
-    --umbral-producto PORCENTAJE
-                          cuánto tiene que cambiar uno de los 10 productos que más
-                          venden para mencionarlo en el email (por defecto 50 %)
+Options:
+    --currency SYMBOL     currency symbol in the report (default €)
+    --move-processed      when finished, moves each file processed without errors
+                          to a "processed/" subfolder next to it (useful when scheduled)
+    --send-email          sends the reports by email (settings in .env,
+                          see .env.example)
+    --history PATH        saves the totals of each run in that CSV and alerts if
+                          sales or orders change sharply compared with the
+                          average of the 4 previous runs
+    --threshold PERCENT   how much it has to change to alert (default 30%)
+    --product-threshold PERCENT
+                          how much one of the 10 best-selling products has to
+                          change to mention it in the email (default 50%)
 
-Resultados (carpeta resultados/):
-    <nombre del archivo>/ventas_limpio.csv      -> datos ya limpios
-    <nombre del archivo>/filas_descartadas.csv  -> filas eliminadas y el motivo
-    <nombre del archivo>/informe.html           -> informe con indicadores y gráficos
-    <nombre del archivo>/graficos/              -> imágenes PNG de los gráficos
-    resumen.html                                -> comparación de archivos (solo con una carpeta)
-    evolucion.png                               -> ventas de cada ejecución (solo con --historial)
-    registro.log                                -> registro de todas las ejecuciones
+Results (results/ folder):
+    <file name>/clean_sales.csv       -> data already cleaned
+    <file name>/discarded_rows.csv    -> removed rows and the reason
+    <file name>/report.html           -> report with metrics and charts
+    <file name>/charts/               -> PNG images of the charts
+    summary.html                      -> comparison of files (only with a folder)
+    trend.png                         -> sales of each run (only with --history)
+    run.log                           -> log of every run
 """
 
 import argparse
@@ -42,358 +42,352 @@ from pathlib import Path
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-import alertas
-import enviar_email
-from formato import numero
-from graficos import grafico_evolucion, grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
-from limpieza import calcular_indicadores, limpiar_ventas
+import alerts
+import send_email
+from charts import sales_by_product_chart, sales_over_time_chart, trend_chart
+from cleaning import calculate_metrics, clean_sales
+from formatting import number
 
-CARPETA_RESULTADOS = Path("resultados")
-ARCHIVO_POR_DEFECTO = Path("datos/ventas_ejemplo.csv")
-EXTENSIONES = {".csv", ".xlsx", ".xls"}
+RESULTS_FOLDER = Path("results")
+DEFAULT_FILE = Path("data/sample_sales.csv")
+EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
-# Plantillas HTML de los informes. autoescape evita que un texto de los datos
-# (por ejemplo un producto llamado "<b>Oferta</b>") se interprete como HTML.
-PLANTILLAS = Environment(
-    loader=FileSystemLoader(Path(__file__).resolve().parent / "plantillas"),
+# HTML templates for the reports. autoescape stops a text from the data
+# (for example a product called "<b>Offer</b>") from being read as HTML.
+TEMPLATES = Environment(
+    loader=FileSystemLoader(Path(__file__).resolve().parent / "templates"),
     autoescape=select_autoescape(),
 )
-PLANTILLAS.filters["numero"] = numero  # en las plantillas: {{ valor | numero }}
+TEMPLATES.filters["number"] = number  # in the templates: {{ value | number }}
 
 
-def configurar_registro():
-    """Guarda los mensajes en resultados/registro.log y también los muestra en pantalla."""
-    CARPETA_RESULTADOS.mkdir(exist_ok=True)
+def setup_logging():
+    """Saves the messages in results/run.log and also shows them on screen."""
+    RESULTS_FOLDER.mkdir(exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
         handlers=[
-            logging.FileHandler(CARPETA_RESULTADOS / "registro.log", encoding="utf-8"),
+            logging.FileHandler(RESULTS_FOLDER / "run.log", encoding="utf-8"),
             logging.StreamHandler(),
         ],
     )
-    # matplotlib escribe avisos internos que no interesan en nuestro registro.
+    # matplotlib writes internal warnings that don't matter in our log.
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 
-def leer_archivo(archivo):
-    """Lee un CSV o un Excel. Todo se lee como texto para poder detectar los errores nosotros."""
-    if archivo.suffix.lower() == ".csv":
-        return pd.read_csv(archivo, dtype=str, keep_default_na=False)
-    return pd.read_excel(archivo, dtype=str, keep_default_na=False)
+def read_file(file):
+    """Reads a CSV or an Excel file. Everything is read as text so we can detect the errors ourselves."""
+    if file.suffix.lower() == ".csv":
+        return pd.read_csv(file, dtype=str, keep_default_na=False)
+    return pd.read_excel(file, dtype=str, keep_default_na=False)
 
 
-def buscar_archivos(ruta):
-    """Devuelve la lista de archivos a procesar: el propio archivo, o los de la carpeta."""
-    if ruta.is_dir():
-        return sorted(a for a in ruta.iterdir() if a.is_file() and a.suffix.lower() in EXTENSIONES)
-    return [ruta]
+def find_files(path):
+    """Returns the list of files to process: the file itself, or the ones in the folder."""
+    if path.is_dir():
+        return sorted(f for f in path.iterdir() if f.is_file() and f.suffix.lower() in EXTENSIONS)
+    return [path]
 
 
-def crear_graficos(limpio, carpeta_salida):
-    """Genera los gráficos en <carpeta_salida>/graficos/.
+def create_charts(clean, output_folder):
+    """Generates the charts in <output_folder>/charts/.
 
-    Devuelve una lista con (título, imagen, datos) de cada gráfico.
+    Returns a list with (title, image, data) for each chart.
     """
-    carpeta = carpeta_salida / "graficos"
-    carpeta.mkdir(exist_ok=True)
-    graficos = []
-    for nombre, funcion in [
-        ("ventas_por_producto.png", grafico_ventas_por_producto),
-        ("ventas_en_el_tiempo.png", grafico_ventas_en_el_tiempo),
+    folder = output_folder / "charts"
+    folder.mkdir(exist_ok=True)
+    charts = []
+    for name, function in [
+        ("sales_by_product.png", sales_by_product_chart),
+        ("sales_over_time.png", sales_over_time_chart),
     ]:
-        titulo, datos = funcion(limpio, carpeta / nombre)
-        graficos.append((titulo, f"graficos/{nombre}", datos))
-    return graficos
+        title, data = function(clean, folder / name)
+        charts.append((title, f"charts/{name}", data))
+    return charts
 
 
-def imagen_incrustada(ruta):
-    """Convierte un PNG en texto (base64) para meterlo dentro del HTML.
+def embedded_image(path):
+    """Converts a PNG into text (base64) to put it inside the HTML.
 
-    Así el informe es un solo archivo: se puede enviar por email y se ve completo.
+    That way the report is a single file: it can be sent by email and shows complete.
     """
-    contenido = base64.b64encode(ruta.read_bytes()).decode("ascii")
-    return f"data:image/png;base64,{contenido}"
+    content = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{content}"
 
 
-def escribir_informe(carpeta_salida, archivo, filas_originales, limpio, descartadas,
-                     indicadores, graficos, moneda):
-    """Crea el informe en HTML a partir de la plantilla plantillas/informe.html."""
-    motivos = descartadas["motivo"].value_counts()
-    html = PLANTILLAS.get_template("informe.html").render(
-        archivo=archivo,
-        nombre_archivo=archivo.name,
-        fecha_ejecucion=f"{datetime.now():%d/%m/%Y %H:%M}",
-        moneda=moneda,
-        indicadores=indicadores,
-        graficos=[
+def write_report(output_folder, file, original_rows, clean, discarded, metrics, charts, currency):
+    """Creates the HTML report from the templates/report.html template."""
+    reasons = discarded["reason"].value_counts()
+    html = TEMPLATES.get_template("report.html").render(
+        file=file,
+        file_name=file.name,
+        run_date=f"{datetime.now():%d/%m/%Y %H:%M}",
+        currency=currency,
+        metrics=metrics,
+        charts=[
             {
-                "titulo": titulo,
-                "imagen": imagen_incrustada(carpeta_salida / imagen),
-                "cabecera": datos.index.name,
-                "filas": list(datos.items()),
+                "title": title,
+                "image": embedded_image(output_folder / image),
+                "header": data.index.name,
+                "rows": list(data.items()),
             }
-            for titulo, imagen, datos in graficos
+            for title, image, data in charts
         ],
-        calidad={
-            "originales": filas_originales,
-            "validas": len(limpio),
-            "descartadas": len(descartadas),
-            "porcentaje_descartadas": 100 * len(descartadas) / filas_originales,
-            "motivos": list(motivos.items()),
+        quality={
+            "original": original_rows,
+            "valid": len(clean),
+            "discarded": len(discarded),
+            "discarded_percent": 100 * len(discarded) / original_rows,
+            "reasons": list(reasons.items()),
         },
     )
-    ruta = carpeta_salida / "informe.html"
-    ruta.write_text(html, encoding="utf-8")
-    return ruta
+    path = output_folder / "report.html"
+    path.write_text(html, encoding="utf-8")
+    return path
 
 
-def procesar_archivo(archivo, moneda):
-    """Limpia un archivo y genera sus resultados en resultados/<nombre del archivo>/.
+def process_file(file, currency):
+    """Cleans a file and generates its results in results/<file name>/.
 
-    Devuelve los indicadores, o None si el archivo no se pudo procesar.
+    Returns the metrics, or None if the file couldn't be processed.
     """
-    logging.info("Procesando %s", archivo)
+    logging.info("Processing %s", file)
     try:
-        df = leer_archivo(archivo)
+        df = read_file(file)
     except FileNotFoundError:
-        logging.error("No se encuentra el archivo %s", archivo)
+        logging.error("File not found: %s", file)
         return None
-    except Exception as error:  # archivo dañado, formato no reconocido...
-        logging.error("No se pudo leer %s: %s", archivo, error)
+    except Exception as error:  # damaged file, unknown format...
+        logging.error("Couldn't read %s: %s", file, error)
         return None
-    logging.info("Filas leídas: %d", len(df))
+    logging.info("Rows read: %d", len(df))
 
     try:
-        limpio, descartadas = limpiar_ventas(df)
+        clean, discarded = clean_sales(df)
     except ValueError as error:
-        logging.error("%s: %s", archivo.name, error)
+        logging.error("%s: %s", file.name, error)
         return None
 
-    for motivo, n in descartadas["motivo"].value_counts().items():
-        logging.warning("Descartadas %d filas por: %s", n, motivo)
-    logging.info("Filas válidas: %d", len(limpio))
-    if limpio.empty:
-        logging.error("%s: no queda ninguna fila válida", archivo.name)
+    for reason, n in discarded["reason"].value_counts().items():
+        logging.warning("Discarded %d rows because of: %s", n, reason)
+    logging.info("Valid rows: %d", len(clean))
+    if clean.empty:
+        logging.error("%s: no valid rows left", file.name)
         return None
 
-    indicadores = calcular_indicadores(limpio)
-    logging.info("Indicadores: %s", indicadores)
+    metrics = calculate_metrics(clean)
+    logging.info("Metrics: %s", metrics)
 
-    carpeta_salida = CARPETA_RESULTADOS / archivo.stem
-    carpeta_salida.mkdir(exist_ok=True)
-    limpio.to_csv(carpeta_salida / "ventas_limpio.csv", index=False)
-    descartadas.to_csv(carpeta_salida / "filas_descartadas.csv", index=False)
-    graficos = crear_graficos(limpio, carpeta_salida)
-    ruta_informe = escribir_informe(carpeta_salida, archivo, len(df), limpio, descartadas,
-                                    indicadores, graficos, moneda)
-    logging.info("Informe generado en %s", ruta_informe)
-    return indicadores
+    output_folder = RESULTS_FOLDER / file.stem
+    output_folder.mkdir(exist_ok=True)
+    clean.to_csv(output_folder / "clean_sales.csv", index=False)
+    discarded.to_csv(output_folder / "discarded_rows.csv", index=False)
+    charts = create_charts(clean, output_folder)
+    report_path = write_report(output_folder, file, len(df), clean, discarded,
+                               metrics, charts, currency)
+    logging.info("Report generated in %s", report_path)
+    return metrics
 
 
-def escribir_resumen(resultados, moneda, evolucion=None):
-    """Crea resultados/resumen.html con una fila por archivo, para compararlos.
+def write_summary(results, currency, trend=None):
+    """Creates results/summary.html with one row per file, to compare them.
 
-    evolucion es la ruta del gráfico de evolución semanal, si lo hay.
+    trend is the path of the weekly trend chart, if there is one.
     """
-    errores = sum(1 for _, indicadores in resultados if indicadores is None)
-    html = PLANTILLAS.get_template("resumen.html").render(
-        fecha_ejecucion=f"{datetime.now():%d/%m/%Y %H:%M}",
-        moneda=moneda,
-        evolucion=imagen_incrustada(evolucion) if evolucion else None,
-        correctos=len(resultados) - errores,
-        errores=errores,
-        filas=[
-            {"nombre": archivo.name, "indicadores": indicadores,
-             "enlace": f"{archivo.stem}/informe.html"}
-            for archivo, indicadores in resultados
+    errors = sum(1 for _, metrics in results if metrics is None)
+    html = TEMPLATES.get_template("summary.html").render(
+        run_date=f"{datetime.now():%d/%m/%Y %H:%M}",
+        currency=currency,
+        trend=embedded_image(trend) if trend else None,
+        succeeded=len(results) - errors,
+        errors=errors,
+        rows=[
+            {"name": file.name, "metrics": metrics, "link": f"{file.stem}/report.html"}
+            for file, metrics in results
         ],
     )
-    ruta = CARPETA_RESULTADOS / "resumen.html"
-    ruta.write_text(html, encoding="utf-8")
-    return ruta
+    path = RESULTS_FOLDER / "summary.html"
+    path.write_text(html, encoding="utf-8")
+    return path
 
 
-def ventas_por_producto(archivos):
-    """Suma el importe de cada producto en los datos limpios de todos los archivos."""
-    limpios = [pd.read_csv(CARPETA_RESULTADOS / archivo.stem / "ventas_limpio.csv",
-                           usecols=["producto", "importe"], dtype={"producto": str})
-               for archivo in archivos]
-    return pd.concat(limpios).groupby("producto")["importe"].sum()
+def sales_by_product(files):
+    """Adds up the amount of each product in the clean data of all the files."""
+    cleaned = [pd.read_csv(RESULTS_FOLDER / file.stem / "clean_sales.csv",
+                           usecols=["product", "amount"], dtype={"product": str})
+               for file in files]
+    return pd.concat(cleaned).groupby("product")["amount"].sum()
 
 
-def comparar_productos_con_anteriores(archivos, ruta_historial, umbral):
-    """Guarda las ventas por producto en su historial y busca los que más han cambiado.
+def compare_products_with_previous(files, history_path, threshold):
+    """Saves the sales per product in their history and finds the ones that changed the most.
 
-    Devuelve la lista de esos productos, o None si no hay con qué comparar.
+    Returns the list of those products, or None if there's nothing to compare with.
     """
-    ruta = alertas.ruta_historial_productos(ruta_historial)
-    actual = ventas_por_producto(archivos)
-    referencia = alertas.leer_productos_referencia(ruta)
-    alertas.guardar_productos(ruta, actual)
-    if referencia is None:
+    path = alerts.product_history_path(history_path)
+    current = sales_by_product(files)
+    reference = alerts.read_products_reference(path)
+    alerts.save_products(path, current)
+    if reference is None:
         return None
-    cambios = alertas.comparar_productos(actual, referencia, umbral)
-    for c in cambios:  # solo informativo: no es un aviso
-        logging.info("Producto que más cambió: %s %+.1f %%", c["producto"], c["cambio"])
-    return cambios
+    changes = alerts.compare_products(current, reference, threshold)
+    for c in changes:  # information only: not an alert
+        logging.info("Product that changed the most: %s %+.1f%%", c["product"], c["change"])
+    return changes
 
 
-def comparar_con_anteriores(resultados, ruta_historial, umbral,
-                            umbral_producto=alertas.UMBRAL_PRODUCTO_POR_DEFECTO):
-    """Guarda los totales y las ventas por producto de esta ejecución en los historiales
-    y los compara con la media de las últimas ejecuciones.
+def compare_with_previous(results, history_path, threshold,
+                          product_threshold=alerts.DEFAULT_PRODUCT_THRESHOLD):
+    """Saves the totals and the sales per product of this run in the history files
+    and compares them with the average of the last runs.
 
-    Devuelve {"semanas": ..., "cambios": [...], "productos": [...]}, donde "semanas" es
-    cuántas ejecuciones entran en la media, o None si no hay con qué comparar.
+    Returns {"weeks": ..., "changes": [...], "products": [...]}, where "weeks" is
+    how many runs go into the average, or None if there's nothing to compare with.
     """
-    archivos = [archivo for archivo, indicadores in resultados if indicadores is not None]
-    if not archivos:
+    files = [file for file, metrics in results if metrics is not None]
+    if not files:
         return None
-    totales = alertas.sumar_indicadores([indicadores for _, indicadores in resultados
-                                         if indicadores is not None])
-    # La referencia se lee antes de guardar: esta ejecución no entra en su propia media.
-    referencia = alertas.leer_referencia(ruta_historial)
-    alertas.guardar_ejecucion(ruta_historial, totales)
-    productos = comparar_productos_con_anteriores(archivos, ruta_historial, umbral_producto)
-    if referencia is None:
-        logging.info("Primera ejecución con historial: la próxima vez habrá con qué comparar")
+    totals = alerts.sum_metrics([metrics for _, metrics in results if metrics is not None])
+    # The reference is read before saving: this run isn't part of its own average.
+    reference = alerts.read_reference(history_path)
+    alerts.save_run(history_path, totals)
+    products = compare_products_with_previous(files, history_path, product_threshold)
+    if reference is None:
+        logging.info("First run with history: next time there will be something to compare with")
         return None
 
-    cambios = alertas.comparar(totales, referencia, umbral)
-    for c in cambios:
-        if c["brusco"]:
-            logging.warning("Cambio brusco en %s: %+.1f %% respecto a la media de las %d "
-                            "ejecuciones anteriores", c["nombre"].lower(), c["cambio"],
-                            referencia["semanas"])
-    return {"semanas": referencia["semanas"], "cambios": cambios, "productos": productos or []}
+    changes = alerts.compare(totals, reference, threshold)
+    for c in changes:
+        if c["sharp"]:
+            logging.warning("Sharp change in %s: %+.1f%% compared with the average of the %d "
+                            "previous runs", c["name"].lower(), c["change"], reference["weeks"])
+    return {"weeks": reference["weeks"], "changes": changes, "products": products or []}
 
 
-def crear_grafico_evolucion(ruta_historial, umbral):
-    """Dibuja resultados/evolucion.png con las ventas de las últimas ejecuciones.
+def create_trend_chart(history_path, threshold):
+    """Draws results/trend.png with the sales of the last runs.
 
-    Devuelve la ruta del gráfico, o None si aún hay menos de dos ejecuciones.
+    Returns the path of the chart, or None if there are still fewer than two runs.
     """
-    historial = alertas.leer_historial(ruta_historial)
-    if len(historial) < 2:
+    history = alerts.read_history(history_path)
+    if len(history) < 2:
         return None
-    ruta = CARPETA_RESULTADOS / "evolucion.png"
-    grafico_evolucion(alertas.marcar_cambios_bruscos(historial, umbral), ruta)
-    logging.info("Gráfico de evolución generado en %s", ruta)
-    return ruta
+    path = RESULTS_FOLDER / "trend.png"
+    trend_chart(alerts.mark_sharp_changes(history, threshold), path)
+    logging.info("Trend chart generated in %s", path)
+    return path
 
 
-def enviar_por_email(resultados, moneda, comparacion=None, evolucion=None):
-    """Envía un email con los indicadores de cada archivo y sus informes HTML adjuntos.
+def send_by_email(results, currency, comparison=None, trend=None):
+    """Sends an email with the metrics of each file and their HTML reports attached.
 
-    Si hay comparación con las ejecuciones anteriores, el email la muestra y el asunto
-    avisa de los cambios bruscos. Si hay gráfico de evolución, va dentro del cuerpo.
+    If there's a comparison with the previous runs, the email shows it and the
+    subject warns about sharp changes. If there's a trend chart, it goes in the body.
     """
-    config = enviar_email.leer_configuracion()
-    correctos = [archivo for archivo, indicadores in resultados if indicadores is not None]
-    errores = len(resultados) - len(correctos)
-    fecha = f"{datetime.now():%d/%m/%Y}"
+    config = send_email.read_config()
+    succeeded = [file for file, metrics in results if metrics is not None]
+    errors = len(results) - len(succeeded)
+    date = f"{datetime.now():%d/%m/%Y}"
 
-    html = PLANTILLAS.get_template("email.html").render(
-        fecha_ejecucion=fecha,
-        moneda=moneda,
-        correctos=len(correctos),
-        errores=errores,
-        filas=[{"nombre": archivo.name, "indicadores": indicadores}
-               for archivo, indicadores in resultados],
-        comparacion=comparacion,
-        evolucion=evolucion is not None,
+    html = TEMPLATES.get_template("email.html").render(
+        run_date=date,
+        currency=currency,
+        succeeded=len(succeeded),
+        errors=errors,
+        rows=[{"name": file.name, "metrics": metrics} for file, metrics in results],
+        comparison=comparison,
+        trend=trend is not None,
     )
-    asunto = f"Informe de ventas · {fecha}"
-    if errores:
-        asunto += f" · ⚠ {errores} con errores"
-    for c in (comparacion or {}).get("cambios", []):
-        if c["brusco"]:
-            asunto += f" · ⚠ {c['nombre']} {c['cambio']:+.0f} %"
-    adjuntos = [(f"informe_{archivo.stem}.html", CARPETA_RESULTADOS / archivo.stem / "informe.html")
-                for archivo in correctos]
+    subject = f"Sales report · {date}"
+    if errors:
+        subject += f" · ⚠ {errors} with errors"
+    for c in (comparison or {}).get("changes", []):
+        if c["sharp"]:
+            subject += f" · ⚠ {c['name']} {c['change']:+.0f}%"
+    attachments = [(f"report_{file.stem}.html", RESULTS_FOLDER / file.stem / "report.html")
+                   for file in succeeded]
 
-    imagenes = [("evolucion", evolucion)] if evolucion else []  # en la plantilla: cid:evolucion
-    mensaje = enviar_email.construir_mensaje(config, asunto, html, adjuntos, imagenes)
-    enviar_email.enviar(config, mensaje)
-    logging.info("Email enviado a %s con %d %s", config["EMAIL_DESTINO"], len(adjuntos),
-                 "informe adjunto" if len(adjuntos) == 1 else "informes adjuntos")
-
-
-def mover_a_procesados(archivo):
-    """Mueve el archivo a una subcarpeta "procesados/" para no volver a procesarlo."""
-    destino = archivo.parent / "procesados"
-    destino.mkdir(exist_ok=True)
-    shutil.move(archivo, destino / archivo.name)
-    logging.info("Movido a %s", destino / archivo.name)
+    images = [("trend", trend)] if trend else []  # in the template: cid:trend
+    message = send_email.build_message(config, subject, html, attachments, images)
+    send_email.send(config, message)
+    logging.info("Email sent to %s with %d %s", config["EMAIL_TO"], len(attachments),
+                 "report attached" if len(attachments) == 1 else "reports attached")
 
 
-def leer_argumentos():
-    parser = argparse.ArgumentParser(description="Limpia archivos de ventas y genera informes.")
-    parser.add_argument("ruta", nargs="?", type=Path, default=ARCHIVO_POR_DEFECTO,
-                        help="archivo CSV/Excel, o carpeta con varios")
-    parser.add_argument("--moneda", default="€", help="símbolo de la moneda (por defecto €)")
-    parser.add_argument("--mover-procesados", action="store_true",
-                        help="mover cada archivo procesado sin errores a procesados/")
-    parser.add_argument("--enviar-email", action="store_true",
-                        help="enviar los informes por email (configuración en .env)")
-    parser.add_argument("--historial", type=Path,
-                        help="CSV donde se guardan los totales de cada ejecución para "
-                             "compararlos con la media de las 4 anteriores y avisar "
-                             "de cambios bruscos")
-    parser.add_argument("--umbral", type=float, default=alertas.UMBRAL_POR_DEFECTO,
-                        help="%% de subida o bajada que se considera brusco (por defecto 30)")
-    parser.add_argument("--umbral-producto", type=float,
-                        default=alertas.UMBRAL_PRODUCTO_POR_DEFECTO,
-                        help="%% de cambio de un producto para mencionarlo (por defecto 50)")
+def move_to_processed(file):
+    """Moves the file to a "processed/" subfolder so it isn't processed again."""
+    destination = file.parent / "processed"
+    destination.mkdir(exist_ok=True)
+    shutil.move(file, destination / file.name)
+    logging.info("Moved to %s", destination / file.name)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Cleans sales files and generates reports.")
+    parser.add_argument("path", nargs="?", type=Path, default=DEFAULT_FILE,
+                        help="CSV/Excel file, or a folder with several")
+    parser.add_argument("--currency", default="€", help="currency symbol (default €)")
+    parser.add_argument("--move-processed", action="store_true",
+                        help="move each file processed without errors to processed/")
+    parser.add_argument("--send-email", action="store_true",
+                        help="send the reports by email (settings in .env)")
+    parser.add_argument("--history", type=Path,
+                        help="CSV where the totals of each run are saved to compare them "
+                             "with the average of the 4 previous ones and alert about "
+                             "sharp changes")
+    parser.add_argument("--threshold", type=float, default=alerts.DEFAULT_THRESHOLD,
+                        help="%% rise or fall considered sharp (default 30)")
+    parser.add_argument("--product-threshold", type=float,
+                        default=alerts.DEFAULT_PRODUCT_THRESHOLD,
+                        help="%% change of a product to mention it (default 50)")
     return parser.parse_args()
 
 
 def main():
-    argumentos = leer_argumentos()
-    configurar_registro()
-    logging.info("Inicio de la ejecución con %s", argumentos.ruta)
+    args = parse_args()
+    setup_logging()
+    logging.info("Run started with %s", args.path)
 
-    archivos = buscar_archivos(argumentos.ruta)
-    if argumentos.historial:  # por si los historiales están en la misma carpeta: no son ventas
-        historiales = {argumentos.historial.resolve(),
-                       alertas.ruta_historial_productos(argumentos.historial).resolve()}
-        archivos = [a for a in archivos if a.resolve() not in historiales]
-    if not archivos:
-        logging.info("No hay archivos CSV ni Excel en %s. Nada que hacer.", argumentos.ruta)
-        logging.info("Fin de la ejecución")
+    files = find_files(args.path)
+    if args.history:  # in case the history files are in the same folder: they aren't sales
+        histories = {args.history.resolve(),
+                     alerts.product_history_path(args.history).resolve()}
+        files = [f for f in files if f.resolve() not in histories]
+    if not files:
+        logging.info("No CSV or Excel files in %s. Nothing to do.", args.path)
+        logging.info("Run finished")
         return
 
-    resultados = []
-    for archivo in archivos:
-        indicadores = procesar_archivo(archivo, argumentos.moneda)
-        resultados.append((archivo, indicadores))
-        if indicadores is not None and argumentos.mover_procesados:
-            mover_a_procesados(archivo)
+    results = []
+    for file in files:
+        metrics = process_file(file, args.currency)
+        results.append((file, metrics))
+        if metrics is not None and args.move_processed:
+            move_to_processed(file)
 
-    comparacion = evolucion = None
-    if argumentos.historial:
-        comparacion = comparar_con_anteriores(resultados, argumentos.historial, argumentos.umbral,
-                                              argumentos.umbral_producto)
-        evolucion = crear_grafico_evolucion(argumentos.historial, argumentos.umbral)
+    comparison = trend = None
+    if args.history:
+        comparison = compare_with_previous(results, args.history, args.threshold,
+                                           args.product_threshold)
+        trend = create_trend_chart(args.history, args.threshold)
 
-    if argumentos.ruta.is_dir():
-        logging.info("Resumen generado en %s",
-                     escribir_resumen(resultados, argumentos.moneda, evolucion))
+    if args.path.is_dir():
+        logging.info("Summary generated in %s", write_summary(results, args.currency, trend))
 
-    errores = sum(1 for _, indicadores in resultados if indicadores is None)
-    email_fallido = False
-    if argumentos.enviar_email:
+    errors = sum(1 for _, metrics in results if metrics is None)
+    email_failed = False
+    if args.send_email:
         try:
-            enviar_por_email(resultados, argumentos.moneda, comparacion, evolucion)
-        except Exception as error:  # configuración incompleta, sin internet, contraseña mal...
-            logging.error("No se pudo enviar el email: %s", error)
-            email_fallido = True
+            send_by_email(results, args.currency, comparison, trend)
+        except Exception as error:  # incomplete settings, no internet, wrong password...
+            logging.error("Couldn't send the email: %s", error)
+            email_failed = True
 
-    logging.info("Fin de la ejecución: %d archivos correctos, %d con errores",
-                 len(resultados) - errores, errores)
-    if errores or email_fallido:
-        sys.exit(1)  # así la tarea programada o GitHub Actions saben que algo falló
+    logging.info("Run finished: %d files succeeded, %d with errors",
+                 len(results) - errors, errors)
+    if errors or email_failed:
+        sys.exit(1)  # so the scheduled task or GitHub Actions know something failed
 
 
 if __name__ == "__main__":

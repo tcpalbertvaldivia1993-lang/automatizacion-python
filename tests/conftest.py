@@ -1,4 +1,4 @@
-# Permite que los tests importen limpieza.py desde la carpeta raíz del proyecto.
+# Lets the tests import cleaning.py and the other modules from the project root folder.
 import sys
 from pathlib import Path
 

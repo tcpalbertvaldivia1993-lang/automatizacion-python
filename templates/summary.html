@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Summary of processed files{% endblock %}
+{% block content %}
+<h1>Summary of processed files</h1>
+<p class="meta">Run date: {{ run_date }} ·
+  {{ succeeded }} succeeded{% if errors %} · <span class="error">{{ errors }} with errors</span>{% endif %}</p>
+
+<section>
+  <div class="wide-table">
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th class="num">Net sales ({{ currency }})</th>
+          <th class="num">Returns ({{ currency }})</th>
+          <th class="num">Orders</th>
+          <th class="num">Avg. order ({{ currency }})</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        {% if row.metrics %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td class="num">{{ row.metrics.net_sales | number }}</td>
+          <td class="num">{{ row.metrics.returns | number }}</td>
+          <td class="num">{{ row.metrics.orders | number(0) }}</td>
+          <td class="num">{{ row.metrics.avg_order_value | number }}</td>
+          <td><a href="{{ row.link }}">Open</a></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td colspan="5" class="error">Couldn't be processed: see run.log</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if trend %}
+<section>
+  <h2>Net sales week by week ({{ currency }})</h2>
+  <p class="meta">In red, the weeks with a sharp change compared with the average of the 4 previous ones (with the % on top).</p>
+  <img src="{{ trend }}" alt="Chart of the net sales of each week">
+</section>
+{% endif %}
+{% endblock %}

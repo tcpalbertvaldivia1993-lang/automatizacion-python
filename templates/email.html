@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"></head>
+{# Email programs ignore a lot of CSS: that's why the styles go inside each tag. #}
+<body style="margin:0; padding:24px 16px; background:#f4f3ef; font-family:Segoe UI, Roboto, Arial, sans-serif; color:#0b0b0b;">
+<div style="max-width:640px; margin:0 auto; background:#fcfcfb; border:1px solid #e4e3df; border-radius:12px; padding:20px;">
+  <h1 style="font-size:20px; margin:0 0 4px;">Sales report</h1>
+  <p style="color:#52514e; font-size:14px; margin:0 0 16px;">
+    {{ run_date }} · {{ succeeded }} {{ "file processed" if succeeded == 1 else "files processed" }}
+    {% if errors %}· <strong style="color:#d03b3b;">{{ errors }} with errors</strong>{% endif %}
+  </p>
+
+  {% if comparison %}
+  {% set sharp = comparison.changes | selectattr("sharp") | list %}
+  {% set reference = "the previous week" if comparison.weeks == 1
+                     else "the average of the previous " ~ comparison.weeks ~ " weeks" %}
+  <div style="border-radius:8px; padding:12px 14px; margin:0 0 16px; font-size:14px;
+              background:{{ '#fbeaea' if sharp else '#f4f3ef' }};
+              border:1px solid {{ '#d03b3b' if sharp else '#e4e3df' }};">
+    <div style="font-weight:600; margin-bottom:6px;">
+      {% if sharp %}<span style="color:#d03b3b;">⚠ Sharp change</span> compared with {{ reference }}
+      {% else %}No sharp changes compared with {{ reference }}{% endif %}
+    </div>
+    <table style="border-collapse:collapse;">
+      {% for c in comparison.changes %}
+      <tr>
+        <td style="color:#52514e; padding:2px 16px 2px 0;">{{ c.name }}</td>
+        <td style="text-align:right; padding:2px 16px 2px 0;">
+          {% if c.key == "orders" %}{{ c.reference | number(0) }} → {{ c.current | number(0) }}
+          {% else %}{{ c.reference | number }} → {{ c.current | number }} {{ currency }}{% endif %}</td>
+        <td style="text-align:right; {{ 'color:#d03b3b; font-weight:600;' if c.sharp }}">
+          {% if c.change is none %}–{% else %}{{ "+" if c.change > 0 }}{{ c.change | number(1) }}%{% endif %}
+          {% if c.sharp %}({{ "rise" if c.change > 0 else "drop" }}){% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% if trend %}
+  <div style="margin:0 0 16px;">
+    <div style="font-weight:600; font-size:15px; margin-bottom:2px;">Net sales week by week ({{ currency }})</div>
+    <div style="color:#52514e; font-size:13px; margin-bottom:6px;">
+      In red, the weeks with a sharp change compared with the average of the 4 previous ones (with the % on top).</div>
+    <img src="cid:trend" alt="Chart of the net sales of each week" width="600"
+         style="display:block; width:100%; max-width:600px; height:auto; border:0;">
+  </div>
+  {% endif %}
+
+  {% if comparison and comparison.products %}
+  {# Information only: no red and no alert, because one large order already moves a product a lot. #}
+  <div style="margin:0 0 16px; font-size:14px;">
+    <div style="font-weight:600; font-size:15px; margin-bottom:2px;">Products that changed the most</div>
+    <div style="color:#52514e; font-size:13px; margin-bottom:6px;">
+      Among the 10 best sellers, compared with {{ reference }}.</div>
+    <table style="border-collapse:collapse;">
+      {% for p in comparison.products %}
+      <tr>
+        <td style="color:#52514e; padding:2px 16px 2px 0;">{{ p.product }}</td>
+        <td style="text-align:right; padding:2px 16px 2px 0;">
+          {{ p.reference | number }} → {{ p.current | number }} {{ currency }}</td>
+        <td style="text-align:right;">{{ "+" if p.change > 0 }}{{ p.change | number(1) }}%
+          {% if p.current == 0 %}(no sales){% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+
+  {% for row in rows %}
+  <div style="border-top:1px solid #e4e3df; padding:12px 0;">
+    <div style="font-weight:600; font-size:15px; margin-bottom:6px;">{{ row.name }}</div>
+    {% if row.metrics %}
+    <table style="border-collapse:collapse; font-size:14px;">
+      <tr><td style="color:#52514e; padding:2px 16px 2px 0;">Net sales</td>
+          <td style="text-align:right; font-weight:600;">{{ row.metrics.net_sales | number }} {{ currency }}</td></tr>
+      <tr><td style="color:#52514e; padding:2px 16px 2px 0;">Returns</td>
+          <td style="text-align:right;">{{ row.metrics.returns | number }} {{ currency }}</td></tr>
+      <tr><td style="color:#52514e; padding:2px 16px 2px 0;">Orders</td>
+          <td style="text-align:right;">{{ row.metrics.orders | number(0) }}</td></tr>
+      <tr><td style="color:#52514e; padding:2px 16px 2px 0;">Average order value</td>
+          <td style="text-align:right;">{{ row.metrics.avg_order_value | number }} {{ currency }}</td></tr>
+    </table>
+    {% else %}
+    <div style="color:#d03b3b; font-size:14px;">Couldn't be processed. The reason is in results/run.log.</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if succeeded %}
+  <p style="color:#52514e; font-size:13px; margin:12px 0 0;">
+    The full reports, with charts, are attached: open them with your browser.</p>
+  {% endif %}
+</div>
+</body>
+</html>

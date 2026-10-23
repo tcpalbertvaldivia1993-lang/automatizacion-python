@@ -1,0 +1,24 @@
+order_id,date,customer,product,quantity,unit_price
+1001,2026-09-01,Alice Smith,Keyboard,2,25.50
+1002,2026-09-01,  Charles Brown ,Mouse,1,12.99
+1002,2026-09-01,Charles Brown,Mouse,1,12.99
+1003,2026-09-02,Mary  Green,Monitor,1,189.00
+1004,2026-09-02,Luke Parker,HDMI Cable,3,"7,50"
+1005,2026-09-03,Ellen Stone,Laptop,1,£899.99
+1006,2026-09-03,George Davis,Keyboard,,25.50
+1007,2026-09-04,Alice Smith,Headphones,two,45.00
+1008,2026-09-04,Peter Hill,Webcam,1,abc
+1009,2026-09-05,Lucy Moore,Monitor,2,-189.00
+1010,2026-09-05,Charles Brown,Mouse,-1,12.99
+1011,2026-09-06, Alice Smith ,Mouse Pad,4,5.00
+1011,2026-09-06,Alice Smith,Mouse Pad,4,5.00
+1012,2026-09-06,Charles Brown,SSD Drive,1,
+1013,2026-09-07,Martha Rivers,USB Stick,5,9.90
+1013,2026-09-07,Martha Rivers,HDMI Cable,2,7.50
+1014,2026-09-08,Luke Parker,Printer,1,129.00
+1015,2026-09-08,Ellen Stone,Ink,2.5,19.99
+1016,2026-13-45,George Davis,Mouse,1,12.99
+1017,yesterday,Sarah West,Keyboard,1,25.50
+1018,,Peter Hill,Monitor,1,189.00
+1019,2099-01-15,Lucy Moore,Webcam,1,39.90
+1020,2026-09-08,Alice Smith,Keyboard,0,25.50

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{% endblock %}</title>
+<style>
+  :root {
+    color-scheme: light;
+    --background: #f4f3ef;
+    --surface: #fcfcfb;
+    --text: #0b0b0b;
+    --muted-text: #52514e;
+    --border: #e4e3df;
+    --accent: #2a78d6;
+    --warning-background: #fdf3dc;
+    --warning-border: #eda100;
+    --error: #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.75rem; margin: 0 0 4px; }
+  h2 { font-size: 1.2rem; margin: 0 0 12px; }
+  .meta { color: var(--muted-text); font-size: 0.9rem; margin: 0 0 24px; }
+  .meta code { background: var(--border); padding: 1px 6px; border-radius: 4px; word-break: break-all; }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .metric {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .metric .label { color: var(--muted-text); font-size: 0.85rem; }
+  .metric .value { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .metric .note { color: var(--muted-text); font-size: 0.8rem; }
+  img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+  th { color: var(--muted-text); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; }
+  details table { margin-top: 8px; }
+  .warning {
+    background: var(--warning-background);
+    border-left: 4px solid var(--warning-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+  }
+  .error { color: var(--error); font-weight: 600; }
+  a { color: var(--accent); }
+  footer { color: var(--muted-text); font-size: 0.8rem; text-align: center; margin-top: 24px; }
+  @media (max-width: 720px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .metric { padding: 12px; min-width: 0; }
+    .metric .value { font-size: 1.1rem; overflow-wrap: anywhere; }
+    section { padding: 14px; }
+    .wide-table { overflow-x: auto; }
+  }
+  @media print {
+    body { background: #fff; }
+    section, .metric { break-inside: avoid; }
+    details > *:not(summary) { display: block; }
+  }
+</style>
+</head>
+<body>
+<main>
+{% block content %}{% endblock %}
+<footer>Automatically generated with automatizacion-python · {{ run_date }}</footer>
+</main>
+</body>
+</html>
