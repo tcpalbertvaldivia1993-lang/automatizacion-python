@@ -34,6 +34,7 @@ Puede procesar una carpeta entera, ejecutarse sola cada semana y enviar los info
    - `resumen.html`: al procesar una carpeta, una tabla que compara todos los archivos.
    - `registro.log`: registro de todas las ejecuciones.
    - `historial.csv`: totales de cada ejecución programada, para detectar cambios bruscos.
+   - `evolucion.png`: gráfico de las ventas netas semana a semana.
 
 ## Estructura
 
@@ -152,6 +153,11 @@ venv/bin/python main.py datos/entrada --historial resultados/historial.csv --umb
 - El registro muestra un aviso: `Cambio brusco en ventas netas: -31.2 %`.
 - Con `--enviar-email`, el email incluye un recuadro con la comparación (en rojo si
   hay un cambio brusco) y el asunto lo avisa: `Informe de ventas · 23/10/2026 · ⚠ Ventas netas -31 %`.
+
+Desde la segunda ejecución se dibuja además `resultados/evolucion.png`: un gráfico con
+las ventas netas de las últimas 12 ejecuciones (semanas), con en rojo y su % las que
+cambiaron bruscamente. Va dentro del cuerpo del email (como imagen incrustada `cid:`,
+que Gmail sí muestra) y en `resumen.html`.
 
 La ejecución programada ya usa `resultados/historial.csv`, así que cada lunes se compara
 con el lunes anterior. Las ejecuciones a mano sin `--historial` no se guardan, para que

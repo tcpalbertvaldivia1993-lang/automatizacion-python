@@ -40,4 +40,12 @@
     </table>
   </div>
 </section>
+
+{% if evolucion %}
+<section>
+  <h2>Ventas netas semana a semana ({{ moneda }})</h2>
+  <p class="meta">En rojo, las semanas con un cambio brusco respecto a la anterior (con el % encima).</p>
+  <img src="{{ evolucion }}" alt="Gráfico de las ventas netas de cada semana">
+</section>
+{% endif %}
 {% endblock %}

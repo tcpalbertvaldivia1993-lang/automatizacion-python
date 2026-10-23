@@ -26,14 +26,29 @@ def sumar_indicadores(lista_indicadores):
     }
 
 
+def leer_historial(ruta):
+    """Lee el historial completo (una fila por ejecución). Vacío si aún no existe."""
+    if not ruta.exists():
+        return pd.DataFrame()
+    return pd.read_csv(ruta)
+
+
 def leer_ultima_ejecucion(ruta):
     """Devuelve la última fila del historial como diccionario, o None si aún no hay."""
-    if not ruta.exists():
-        return None
-    historial = pd.read_csv(ruta)
+    historial = leer_historial(ruta)
     if historial.empty:
         return None
     return historial.iloc[-1].to_dict()
+
+
+def marcar_cambios_bruscos(historial, umbral=UMBRAL_POR_DEFECTO):
+    """Añade al historial el % de cambio de las ventas respecto a la fila anterior
+    y si ese cambio es brusco. Sirve para colorear el gráfico de evolución."""
+    historial = historial.copy()
+    anterior = historial["ventas_totales"].shift()
+    historial["cambio"] = (100 * (historial["ventas_totales"] - anterior) / anterior).where(anterior > 0)
+    historial["brusco"] = historial["cambio"].abs() >= umbral  # NaN (sin dato) da False
+    return historial
 
 
 def guardar_ejecucion(ruta, totales):

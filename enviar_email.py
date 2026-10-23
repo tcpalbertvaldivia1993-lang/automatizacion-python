@@ -36,10 +36,13 @@ def leer_configuracion(ruta=ARCHIVO_CONFIGURACION):
     return config
 
 
-def construir_mensaje(config, asunto, html, adjuntos):
+def construir_mensaje(config, asunto, html, adjuntos, imagenes=()):
     """Crea el email: cuerpo en HTML y los informes como archivos adjuntos.
 
     adjuntos es una lista de (nombre que verá el destinatario, ruta del archivo).
+    imagenes es una lista de (identificador, ruta de un PNG) que se muestran dentro
+    del cuerpo: en el HTML se ponen con <img src="cid:identificador">. Gmail bloquea
+    las imágenes en base64, pero sí muestra estas, que van como partes del mensaje.
     """
     mensaje = EmailMessage()
     mensaje["Subject"] = asunto
@@ -49,6 +52,10 @@ def construir_mensaje(config, asunto, html, adjuntos):
     mensaje.set_content("Resumen de ventas generado automáticamente. "
                         "Los informes completos van adjuntos: ábrelos con el navegador.")
     mensaje.add_alternative(html, subtype="html")
+    parte_html = mensaje.get_body(preferencelist=("html",))
+    for identificador, ruta in imagenes:
+        parte_html.add_related(ruta.read_bytes(), maintype="image", subtype="png",
+                               cid=f"<{identificador}>")
     for nombre, ruta in adjuntos:
         mensaje.add_attachment(ruta.read_bytes(), maintype="text", subtype="html", filename=nombre)
     return mensaje

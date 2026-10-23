@@ -144,7 +144,8 @@ def calcular_indicadores(limpio):
     Solo cuentan como pedidos los que tienen alguna línea de venta (cantidad positiva).
     """
     ventas_totales = round(float(limpio["importe"].sum()), 2)
-    devoluciones = round(float(-limpio.loc[limpio["importe"] < 0, "importe"].sum()), 2)
+    # abs y no un signo menos: sin devoluciones, -0.0 se vería como "-0,00".
+    devoluciones = round(abs(float(limpio.loc[limpio["importe"] < 0, "importe"].sum())), 2)
     pedidos = int(limpio.loc[limpio["cantidad"] > 0, "id_pedido"].nunique())
     valor_medio = round(ventas_totales / pedidos, 2) if pedidos else 0.0
     return {

@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 
 import alertas
@@ -56,6 +57,37 @@ def test_email_avisa_de_bajada_brusca(tmp_path, monkeypatch):
     cuerpo = mensaje.get_body(preferencelist=("html",)).get_content()
     assert "Cambio brusco" in cuerpo and "-31,2 %" in cuerpo and "(bajada)" in cuerpo
     assert alertas.leer_ultima_ejecucion(historial)["ventas_totales"] == 1375.99
+
+
+def test_marcar_cambios_bruscos_en_el_historial():
+    historial = pd.DataFrame({"ventas_totales": [1000.0, 1100.0, 700.0, 0.0, 500.0]})
+    marcado = alertas.marcar_cambios_bruscos(historial, umbral=20)
+    # 1ª: sin anterior · +10 % · -36 % · -100 % · antes 0: no se puede calcular
+    assert marcado["brusco"].tolist() == [False, False, True, True, False]
+    assert round(marcado["cambio"][2], 1) == -36.4
+
+
+def test_grafico_de_evolucion_en_el_email(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "CARPETA_RESULTADOS", tmp_path)
+    monkeypatch.setattr(enviar_email, "leer_configuracion", lambda: CONFIG)
+    monkeypatch.setattr(enviar_email.smtplib, "SMTP", ServidorFalso)
+    ServidorFalso.enviados.clear()
+
+    historial = tmp_path / "historial.csv"
+    alertas.guardar_ejecucion(historial, SEMANA_1)
+    assert main.crear_grafico_evolucion(historial, 20) is None  # con una sola semana no hay gráfico
+    alertas.guardar_ejecucion(historial, {**SEMANA_1, "ventas_totales": 500.0})
+    evolucion = main.crear_grafico_evolucion(historial, 20)
+    assert evolucion == tmp_path / "evolucion.png" and evolucion.exists()
+
+    main.enviar_por_email([(CSV_EJEMPLO, None)], "€", evolucion=evolucion)
+    _, mensaje = ServidorFalso.enviados[0]
+    assert 'src="cid:evolucion"' in mensaje.get_body(preferencelist=("html",)).get_content()
+    imagenes = [p for p in mensaje.walk() if p.get_content_type() == "image/png"]
+    assert [p["Content-ID"] for p in imagenes] == ["<evolucion>"]
+
+    html = main.escribir_resumen([(CSV_EJEMPLO, None)], "€", evolucion).read_text(encoding="utf-8")
+    assert "semana a semana" in html and "data:image/png;base64," in html
 
 
 def test_primera_ejecucion_no_compara(tmp_path):

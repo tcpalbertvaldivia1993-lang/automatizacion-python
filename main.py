@@ -24,6 +24,7 @@ Resultados (carpeta resultados/):
     <nombre del archivo>/informe.html           -> informe con indicadores y gráficos
     <nombre del archivo>/graficos/              -> imágenes PNG de los gráficos
     resumen.html                                -> comparación de archivos (solo con una carpeta)
+    evolucion.png                               -> ventas de cada ejecución (solo con --historial)
     registro.log                                -> registro de todas las ejecuciones
 """
 
@@ -41,7 +42,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 import alertas
 import enviar_email
 from formato import numero
-from graficos import grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
+from graficos import grafico_evolucion, grafico_ventas_en_el_tiempo, grafico_ventas_por_producto
 from limpieza import calcular_indicadores, limpiar_ventas
 
 CARPETA_RESULTADOS = Path("resultados")
@@ -187,12 +188,16 @@ def procesar_archivo(archivo, moneda):
     return indicadores
 
 
-def escribir_resumen(resultados, moneda):
-    """Crea resultados/resumen.html con una fila por archivo, para compararlos."""
+def escribir_resumen(resultados, moneda, evolucion=None):
+    """Crea resultados/resumen.html con una fila por archivo, para compararlos.
+
+    evolucion es la ruta del gráfico de evolución semanal, si lo hay.
+    """
     errores = sum(1 for _, indicadores in resultados if indicadores is None)
     html = PLANTILLAS.get_template("resumen.html").render(
         fecha_ejecucion=f"{datetime.now():%d/%m/%Y %H:%M}",
         moneda=moneda,
+        evolucion=imagen_incrustada(evolucion) if evolucion else None,
         correctos=len(resultados) - errores,
         errores=errores,
         filas=[
@@ -230,11 +235,25 @@ def comparar_con_anterior(resultados, ruta_historial, umbral):
     return {"fecha_anterior": fecha_anterior, "cambios": cambios}
 
 
-def enviar_por_email(resultados, moneda, comparacion=None):
+def crear_grafico_evolucion(ruta_historial, umbral):
+    """Dibuja resultados/evolucion.png con las ventas de las últimas ejecuciones.
+
+    Devuelve la ruta del gráfico, o None si aún hay menos de dos ejecuciones.
+    """
+    historial = alertas.leer_historial(ruta_historial)
+    if len(historial) < 2:
+        return None
+    ruta = CARPETA_RESULTADOS / "evolucion.png"
+    grafico_evolucion(alertas.marcar_cambios_bruscos(historial, umbral), ruta)
+    logging.info("Gráfico de evolución generado en %s", ruta)
+    return ruta
+
+
+def enviar_por_email(resultados, moneda, comparacion=None, evolucion=None):
     """Envía un email con los indicadores de cada archivo y sus informes HTML adjuntos.
 
     Si hay comparación con la ejecución anterior, el email la muestra y el asunto
-    avisa de los cambios bruscos.
+    avisa de los cambios bruscos. Si hay gráfico de evolución, va dentro del cuerpo.
     """
     config = enviar_email.leer_configuracion()
     correctos = [archivo for archivo, indicadores in resultados if indicadores is not None]
@@ -249,6 +268,7 @@ def enviar_por_email(resultados, moneda, comparacion=None):
         filas=[{"nombre": archivo.name, "indicadores": indicadores}
                for archivo, indicadores in resultados],
         comparacion=comparacion,
+        evolucion=evolucion is not None,
     )
     asunto = f"Informe de ventas · {fecha}"
     if errores:
@@ -259,7 +279,8 @@ def enviar_por_email(resultados, moneda, comparacion=None):
     adjuntos = [(f"informe_{archivo.stem}.html", CARPETA_RESULTADOS / archivo.stem / "informe.html")
                 for archivo in correctos]
 
-    mensaje = enviar_email.construir_mensaje(config, asunto, html, adjuntos)
+    imagenes = [("evolucion", evolucion)] if evolucion else []  # en la plantilla: cid:evolucion
+    mensaje = enviar_email.construir_mensaje(config, asunto, html, adjuntos, imagenes)
     enviar_email.enviar(config, mensaje)
     logging.info("Email enviado a %s con %d %s", config["EMAIL_DESTINO"], len(adjuntos),
                  "informe adjunto" if len(adjuntos) == 1 else "informes adjuntos")
@@ -310,18 +331,20 @@ def main():
         if indicadores is not None and argumentos.mover_procesados:
             mover_a_procesados(archivo)
 
-    if argumentos.ruta.is_dir():
-        logging.info("Resumen generado en %s", escribir_resumen(resultados, argumentos.moneda))
-
-    comparacion = None
+    comparacion = evolucion = None
     if argumentos.historial:
         comparacion = comparar_con_anterior(resultados, argumentos.historial, argumentos.umbral)
+        evolucion = crear_grafico_evolucion(argumentos.historial, argumentos.umbral)
+
+    if argumentos.ruta.is_dir():
+        logging.info("Resumen generado en %s",
+                     escribir_resumen(resultados, argumentos.moneda, evolucion))
 
     errores = sum(1 for _, indicadores in resultados if indicadores is None)
     email_fallido = False
     if argumentos.enviar_email:
         try:
-            enviar_por_email(resultados, argumentos.moneda, comparacion)
+            enviar_por_email(resultados, argumentos.moneda, comparacion, evolucion)
         except Exception as error:  # configuración incompleta, sin internet, contraseña mal...
             logging.error("No se pudo enviar el email: %s", error)
             email_fallido = True

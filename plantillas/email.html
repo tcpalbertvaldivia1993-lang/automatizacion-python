@@ -35,6 +35,16 @@
   </div>
   {% endif %}
 
+  {% if evolucion %}
+  <div style="margin:0 0 16px;">
+    <div style="font-weight:600; font-size:15px; margin-bottom:2px;">Ventas netas semana a semana ({{ moneda }})</div>
+    <div style="color:#52514e; font-size:13px; margin-bottom:6px;">
+      En rojo, las semanas con un cambio brusco respecto a la anterior (con el % encima).</div>
+    <img src="cid:evolucion" alt="Gráfico de las ventas netas de cada semana" width="600"
+         style="display:block; width:100%; max-width:600px; height:auto; border:0;">
+  </div>
+  {% endif %}
+
   {% for fila in filas %}
   <div style="border-top:1px solid #e4e3df; padding:12px 0;">
     <div style="font-weight:600; font-size:15px; margin-bottom:6px;">{{ fila.nombre }}</div>
